@@ -633,7 +633,7 @@ bool Animus::Curriculum::StageScenario::IsTerminal(Env const& env) const
 
 bool Animus::Curriculum::StageScenario::IsOpponentSeat(Env const& env, uint32 agent) const
 {
-    return agent == 1 && Arena(env).Against == Opposition::MirrorSeat;
+    return agent == 1 && Arena(env).Seats == SeatPlan::Mirror;
 }
 
 bool Animus::Curriculum::StageScenario::Setup(Env& env)
