@@ -171,6 +171,21 @@ namespace Animus::Curriculum
             float Kill = 3.0f;                  // every seat, per ambusher killed
         } Ambush;
 
+        /// Getting to a place (travel arenas): how far it is, and what arriving pays.
+        struct TravelTuning
+        {
+            float ObjectiveMin = 60.0f;         // ground: yards from the start (by path, reachable on foot)
+            float ObjectiveMax = 320.0f;
+            float FlyingMin = 350.0f;           // flying arenas: yards from the start
+            float FlyingMax = 700.0f;
+            float Progress = 1.0f;              // potential shaping: per 100 yd closed (taken back for leaving)
+            float Arrive = 3.0f;
+            float FastArrive = 3.0f;            // times the fraction of the episode still left
+            float DamageTaken = 1.0f;           // fraction of the bot's health (falls, what it rode past)
+            float Death = 3.0f;
+            float StepCost = 0.0002f;           // per decision
+        } Travel;
+
         /// How the scripted players (owner, PvP opponent, ambushers) play.
         struct ScriptedPlayerTuning
         {
@@ -292,6 +307,17 @@ namespace Animus::Curriculum
             f("Ambush.MaxMs", tuning.Ambush.MaxMs);
             f("Ambush.EngageMaxMs", tuning.Ambush.EngageMaxMs);
             f("Ambush.Kill", tuning.Ambush.Kill);
+
+            f("Travel.ObjectiveMin", tuning.Travel.ObjectiveMin);
+            f("Travel.ObjectiveMax", tuning.Travel.ObjectiveMax);
+            f("Travel.FlyingMin", tuning.Travel.FlyingMin);
+            f("Travel.FlyingMax", tuning.Travel.FlyingMax);
+            f("Travel.Progress", tuning.Travel.Progress);
+            f("Travel.Arrive", tuning.Travel.Arrive);
+            f("Travel.FastArrive", tuning.Travel.FastArrive);
+            f("Travel.DamageTaken", tuning.Travel.DamageTaken);
+            f("Travel.Death", tuning.Travel.Death);
+            f("Travel.StepCost", tuning.Travel.StepCost);
 
             f("ScriptedPlayers.SpellMinMs", tuning.ScriptedPlayers.SpellMinMs);
             f("ScriptedPlayers.SpellMaxMs", tuning.ScriptedPlayers.SpellMaxMs);

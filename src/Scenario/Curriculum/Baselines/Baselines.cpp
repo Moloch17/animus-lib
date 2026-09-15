@@ -22,6 +22,7 @@
 #include "DuelBlock.h"
 #include "GauntletBlock.h"
 #include "PartyBlock.h"
+#include "TravelBlock.h"
 #include <optional>
 
 namespace
@@ -33,6 +34,8 @@ namespace
     constexpr float HEAL_OWNER_BELOW = 0.7f;
     constexpr float HEAL_TEAMMATE_BELOW = 0.6f;
     constexpr float CLOSE_IN_BEYOND_YARDS = 4.0f;
+    constexpr float MOUNT_BEYOND_YARDS = 80.0f;
+    constexpr float CRUISE_HEIGHT_YARDS = 20.0f;
 
     /// A seat's row, read by block: features and actions by their block-relative index.
     class Row
@@ -67,6 +70,43 @@ namespace
         // A living target's health; not the distance, which is 0 in melee range (it is measured between reaches).
         bool const hasTarget = row.Obs(BlockId::Core, CoreBlock::OBS_TARGET_HEALTH) > 0.0f;
         uint32 const heals = layout.AllyHealCount;
+
+        // Travel: a flying mount for a long trip where it flies, else a ground mount; fly at a safe height, land at
+        // the objective and dismount there.
+        if (row.Has(BlockId::Travel) && row.Obs(BlockId::Travel, TravelBlock::OBS_OBJECTIVE) > 0.0f)
+        {
+            float const yards = row.Obs(BlockId::Travel, TravelBlock::OBS_OBJECTIVE_DISTANCE) * 500.0f;
+            float const height = row.Obs(BlockId::Travel, TravelBlock::OBS_HEIGHT) * 50.0f;
+            bool const mounted = row.Obs(BlockId::Travel, TravelBlock::OBS_MOUNTED) > 0.0f;
+            bool const flying = row.Obs(BlockId::Travel, TravelBlock::OBS_FLYING_MOUNT) > 0.0f;
+            bool const moving = row.Obs(BlockId::Travel, TravelBlock::OBS_MOVING) > 0.0f;
+
+            if (row.Obs(BlockId::Travel, TravelBlock::OBS_AT_OBJECTIVE) > 0.0f)
+                return row.Allowed(BlockId::Travel, TravelBlock::ACTION_DISMOUNT);
+
+            if (!mounted && yards > MOUNT_BEYOND_YARDS)
+            {
+                if (std::optional<int32> fly = row.Allowed(BlockId::Travel, TravelBlock::ACTION_MOUNT_FLYING))
+                    return fly;
+                if (std::optional<int32> ride = row.Allowed(BlockId::Travel, TravelBlock::ACTION_MOUNT_GROUND))
+                    return ride;
+            }
+
+            if (flying && yards > MOUNT_BEYOND_YARDS * 0.5f && height < CRUISE_HEIGHT_YARDS && !moving)
+                if (std::optional<int32> climb = row.Allowed(BlockId::Travel, TravelBlock::ACTION_ASCEND))
+                    return climb;
+
+            if (flying && yards < TravelBlock::ARRIVE_DISTANCE && height > 1.0f && !moving)
+                if (std::optional<int32> land = row.Allowed(BlockId::Travel, TravelBlock::ACTION_DESCEND))
+                    return land;
+
+            if (!moving)
+                if (std::optional<int32> go = row.Allowed(BlockId::Travel, TravelBlock::ACTION_MOVE_TO_OBJECTIVE))
+                    return go;
+
+            // On the way: wait (the no-op), rather than cast something that would take the mount away.
+            return 0;
+        }
 
         if (row.Has(BlockId::Gauntlet) && !hasTarget)
         {

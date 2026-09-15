@@ -74,6 +74,10 @@ namespace Animus::BotFactory
     /// equivalent of logging in there. Returns the map, or nullptr on failure.
     Map* PlaceInNewInstance(Player* bot, uint32 mapId, Position const& pos);
 
+    /// Put a Create()d bot on continent `mapId` (not instanceable, shared) at `pos`. Returns the map, or nullptr on
+    /// failure.
+    Map* PlaceOnContinent(Player* bot, uint32 mapId, Position const& pos);
+
     /// Put a Create()d bot into an existing map at `pos`. Returns false on failure.
     bool PlaceInMap(Player* bot, Map* map, Position const& pos);
 

@@ -93,6 +93,10 @@ namespace Animus::Curriculum
         std::array<Teammate, PARTY_MEMBERS> Teammates{};
         Player* Tank = nullptr;
 
+        // Travel: where the seat is going.
+        bool HasObjective = false;
+        Position Objective;
+
         // PvP: the enemy player.
         Player* Opponent = nullptr;
         bool OpponentHidden = false;                // the bot can neither see nor detect it

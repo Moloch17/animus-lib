@@ -28,8 +28,11 @@
  */
 namespace Animus::Curriculum::SeatEncoder
 {
-    /// Whether the layout also acts without a target (between gauntlet pulls: food, drink, sustain spells).
-    [[nodiscard]] inline bool ActsWithoutTarget(Layout const& layout) { return layout.Has(BlockId::Gauntlet); }
+    /// Whether the layout also acts without a target (between gauntlet pulls: food, drink, sustain spells; travel).
+    [[nodiscard]] inline bool ActsWithoutTarget(Layout const& layout)
+    {
+        return layout.Has(BlockId::Gauntlet) || layout.Has(BlockId::Travel);
+    }
 
     /// Write the layout's observation (view.L->ObsDim values) and action mask (view.L->NumActions). Action 0 is always
     /// allowed and the character features are always written; the rest only for a living bot with a target (or a

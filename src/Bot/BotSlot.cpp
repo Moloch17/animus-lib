@@ -17,6 +17,7 @@
  */
 
 #include "BotSlot.h"
+#include "DBCStores.h"
 #include "Player.h"
 #include "Position.h"
 #include "WorldSession.h"
@@ -57,8 +58,11 @@ Player* Animus::BotSlot::CreateNext(BotFactory::BotSpec spec, Map*& map, uint32 
         _sessions[session].reset(bot->GetSession());
     _guids[session] = bot->GetGUID().GetCounter();
 
+    // No map yet: a new instance of an instanceable map, else the continent every env shares.
+    MapEntry const* mapEntry = sMapStore.LookupEntry(mapId);
     bool const placed = map ? BotFactory::PlaceInMap(bot, map, start)
-        : (map = BotFactory::PlaceInNewInstance(bot, mapId, start)) != nullptr;
+        : (map = mapEntry && !mapEntry->Instanceable() ? BotFactory::PlaceOnContinent(bot, mapId, start)
+            : BotFactory::PlaceInNewInstance(bot, mapId, start)) != nullptr;
     if (!placed)
     {
         // DestroyUnplaced deletes the session too.

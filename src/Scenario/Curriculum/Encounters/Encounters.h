@@ -335,6 +335,43 @@ namespace Animus::Curriculum
 
         std::vector<EnvAmbush> _envs;
     };
+
+    /// A place to get to: on the ground a reachable spot 60-320 yd away by path, in a flying arena a spot 350-700 yd
+    /// away. Reward: potential shaping on the distance left, arriving (on the ground; faster pays more), damage taken
+    /// (falls), death. The episode ends on arriving or dying.
+    class TravelEncounter final : public Encounter
+    {
+    public:
+        TravelEncounter(StageScenario& scenario, uint32 envs);
+
+        [[nodiscard]] std::vector<RewardTerm> RewardTerms() const override;
+        void AddEpisodeInfo(EpisodeInfoTable& table) override;
+        void ResetEpisode(Env& env) override;
+        bool Build(Env& env, Map* map, uint8 level) override;
+        bool SelectTarget(Env const& env, uint32 seat, Unit*& target) override;
+        void View(Env const& env, uint32 seat, SeatView& view) const override;
+        void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
+        [[nodiscard]] bool IsTerminal(Env const& env) const override;
+
+    private:
+        struct EnvTravel
+        {
+            bool HasObjective = false;
+            Position Objective;
+            float StartDistance = 0.0f;         // yards on the ground at the start
+            float LastDistance = -1.0f;         // shaping: yards at the last reward; < 0 = none yet
+            bool Arrived = false;
+            uint32 ArriveMs = 0;
+            uint32 MountedMs = 0;               // episode time spent mounted
+            uint32 FlyingMs = 0;                // ... on a flying mount in the air
+            uint32 LastRewardMs = 0;
+        };
+
+        /// A spot for the objective around `bot`; false if none was found.
+        bool PickObjective(Player* bot, Map* map, bool flying, Position& objective) const;
+
+        std::vector<EnvTravel> _envs;
+    };
 }
 
 #endif

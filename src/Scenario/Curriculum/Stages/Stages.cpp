@@ -21,7 +21,8 @@
  * blocks it needs and adding its own.
  *
  *   duel ─┬─ pack ─ gauntlet ─ companion ─ party ─┬─ crossroads     (PvE ...
- *         └─ pvp ─ arena ─────────────────────────┘                  ... and PvP, merged)
+ *         ├─ pvp ─ arena ─────────────────────────┘                  ... and PvP, merged)
+ *         └─ travel ─ flight                                         (getting somewhere)
  *
  * Scenario names carry the stage's number (stage1_duel ... stage8_crossroads), model names only its suffix (_duel). The
  * duel is the first stage: nothing seeds it.
@@ -35,6 +36,7 @@
 
 #include "StageDefinition.h"
 #include "Log.h"
+#include "AreaDefines.h"
 #include <algorithm>
 
 namespace
@@ -146,6 +148,37 @@ namespace
             },
         });
 
+        // Travel: getting somewhere, off the duel. Characters of 20 and up ride; the policy learns when a trip is worth
+        // a mount's cast time, and to arrive on foot, ready to fight.
+        stages.push_back({
+            .Name = "stage9_travel",
+            .Suffix = "_travel",
+            .Extends = "stage1_duel",
+            .Summary = "a place 60-320 yd away by path: mount when it pays, get there, arrive on foot",
+            .Blocks = { Core, Duel, Pet, Travel },
+            .Arenas = { { .Name = "travel", .Against = Opposition::Travel, .EpisodeSeconds = 150 } },
+            .MinLevel = 20,
+        });
+
+        // Flight: Outland's Nagrand, where flying mounts fly (a battleground never allows them). The envs share the
+        // continent, each in its own phase, spread over open ground.
+        stages.push_back({
+            .Name = "stage10_flight",
+            .Suffix = "_flight",
+            .Extends = "stage9_travel",
+            .Summary = "a place 350-700 yd away in Nagrand: take off, fly over what is in the way, land, dismount",
+            .Blocks = { Core, Duel, Pet, Travel },
+            .Arenas = { { .Name = "flight", .Against = Opposition::Travel, .EpisodeSeconds = 180, .Flying = true } },
+            .MapId = MAP_OUTLAND,
+            .SpawnPoints = {
+                { -1684.0f, 7167.0f, 2.0f, 0.0f }, { -1060.0f, 7618.0f, 28.0f, 0.0f },
+                { -1820.0f, 8828.0f, 28.0f, 0.0f }, { -1226.0f, 8834.0f, 46.0f, 0.0f },
+                { -2581.0f, 6582.0f, 11.0f, 0.0f }, { -1308.0f, 6816.0f, 36.0f, 0.0f },
+                { -1092.0f, 7304.0f, 33.0f, 0.0f }, { -2533.0f, 7693.0f, -23.0f, 0.0f },
+            },
+            .MinLevel = 60,
+        });
+
         // A pilot of arena mixing and merging, not part of the curriculum: the duel and the scripted enemy player in
         // one stage, merging the two stages that trained them (each teaches its arena). Trained only when named
         // (forge start mix_duel_pvp).
@@ -200,6 +233,13 @@ namespace
             return "a one-on-one against a player is pvp";
         if (arena.Pvp && !player)
             return "a pvp arena fights a player";
+        bool const travel = arena.Against == Opposition::Travel;
+        if (travel && !stage.Has(BlockId::Travel))
+            return "travel needs the travel block";
+        if (travel && (arena.Seats != SeatPlan::Solo || arena.Owner || arena.Pvp || arena.Ambushers > 0))
+            return "travel is one seat on its own";
+        if (arena.Flying && !travel)
+            return "only a travel arena flies";
 
         return {};
     }

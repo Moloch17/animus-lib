@@ -22,6 +22,7 @@
 #include "Config.h"
 #include "Containers.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "EncoderSupport.h"
 #include "Encounters.h"
 #include "Env.h"
@@ -134,10 +135,15 @@ namespace
 }
 
 Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, StageDefinition const& stage)
-    : _stage(stage), _tuning(CurriculumTuning::Load(settings.TuningPrefix)), _spawnMapId(settings.SpawnMapId),
-    _spawnPoint(settings.SpawnPosition), _seatCount(stage.SeatCount()), _level(settings.Level),
+    : _stage(stage), _tuning(CurriculumTuning::Load(settings.TuningPrefix)),
+    _spawnMapId(stage.MapId ? stage.MapId : settings.SpawnMapId),
+    _spawnPoint(stage.MapId && !stage.SpawnPoints.empty() ? stage.SpawnPoints.front() : settings.SpawnPosition),
+    _seatCount(stage.SeatCount()), _level(settings.Level),
     _decisionScale(float(settings.DecisionMs) / REWARD_TUNING_MS)
 {
+    if (MapEntry const* mapEntry = sMapStore.LookupEntry(_spawnMapId))
+        _continent = !mapEntry->Instanceable();
+
     // The class/roles this run plays: StageSettings::ClassRoles, or all of them.
     for (ClassRoleProfile const& profile : ClassRoleProfiles())
     {
@@ -179,6 +185,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     PullsEncounter* pulls = nullptr;
     CreatureEncounter* creature = nullptr;
     AmbushEncounter* ambush = nullptr;
+    TravelEncounter* travel = nullptr;
 
     auto const add = [this](auto encounter)
     {
@@ -194,6 +201,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     auto const hasPulls = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Pulls; };
     auto const hasCreature = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Creature; };
     auto const hasAmbush = [](ArenaDefinition const& arena) { return arena.Ambushers > 0; };
+    auto const hasTravel = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Travel; };
 
     // Build order matters: the owner comes before the party group (which it leads) and the pulls (which spawn around
     // it); both check it. Rewards do not depend on each other's order: what several read (a seat's damage taken, the
@@ -211,9 +219,12 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     // After the owner and the pulls: ambushers find the owner and take the slots the pull leaves.
     if (_stage.AnyArena(hasAmbush))
         ambush = add(std::make_unique<AmbushEncounter>(*this, envs));
+    if (_stage.AnyArena(hasTravel))
+        travel = add(std::make_unique<TravelEncounter>(*this, envs));
 
     // The order episode info columns and reward terms are listed in.
-    for (Encounter* encounter : std::initializer_list<Encounter*>{ creature, pulls, _owner, _party, opponent, ambush })
+    for (Encounter* encounter : std::initializer_list<Encounter*>{ creature, pulls, _owner, _party, opponent, ambush,
+        travel })
         if (encounter)
             _rewardOrder.push_back(encounter);
 
@@ -225,7 +236,8 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
         {
             return (encounter == opponent && fightsPlayer(arena)) || (encounter == _owner && arena.Owner)
                 || (encounter == _party && arena.PartyGroup) || (encounter == pulls && hasPulls(arena))
-                || (encounter == creature && hasCreature(arena)) || (encounter == ambush && hasAmbush(arena));
+                || (encounter == creature && hasCreature(arena)) || (encounter == ambush && hasAmbush(arena))
+                || (encounter == travel && hasTravel(arena));
         };
 
         std::vector<Encounter*>& build = _arenaEncounters.emplace_back();
@@ -291,6 +303,18 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
         for (std::size_t arena = 0; arena < _stage.Arenas.size(); ++arena)
             LOG_DEBUG("module.animus", "{}: arena {} (weight {}, {} s episodes)", Name(), _stage.Arenas[arena].Name,
                 _arenaWeights[arena], _arenaEpisodeMs[arena] / IN_MILLISECONDS);
+}
+
+Position const& Animus::Curriculum::StageScenario::SpawnPointFor(Env const& env) const
+{
+    return _stage.MapId && !_stage.SpawnPoints.empty() ? _stage.SpawnPoints[env.Index % _stage.SpawnPoints.size()]
+        : _spawnPoint;
+}
+
+uint32 Animus::Curriculum::StageScenario::EnvPhase(Env const& env)
+{
+    // Phase 1 is the world's own; each env takes one of the other 31 bits.
+    return uint32(1) << (1 + env.Index % 31);
 }
 
 Animus::Curriculum::ArenaDefinition const& Animus::Curriculum::StageScenario::Arena(Env const& env) const
@@ -725,6 +749,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
         if (data.Seats[seat].L)
             minLevel = std::max(minLevel, data.Seats[seat].L->Assets->Kit->MinLevel());
 
+    minLevel = std::max(minLevel, _stage.MinLevel);
     uint8 const level = RandomLevel(minLevel, _level, _tuning.Characters);
 
     // The first build opens a new instance, unless the host placed the env in one (Env::MapId/InstanceId).
@@ -743,7 +768,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
     Player* firstNew = nullptr;
     for (uint32 seat = 0; seat < data.ActiveSeats; ++seat)
     {
-        Position start = _spawnPoint;
+        Position start = SpawnPointFor(env);
         if (arena.Seats == SeatPlan::Party)
         {
             start.m_positionX += (seat % 2 ? -PARTY_SPACING : PARTY_SPACING) * float(1 + seat / 2);
@@ -791,7 +816,8 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
         data.Seats[seat].Bot.Promote();
 
     Player* lead = SeatBot(env, 0);
-    if (firstBuild)
+    // A continent's own creatures are in another phase than the env's, and belong to every env.
+    if (firstBuild && !_continent)
         SpawnArea::Clear(lead);
 
     env.MapId = map->GetId();
@@ -834,6 +860,10 @@ Player* Animus::Curriculum::StageScenario::BuildSeat(Env& env, uint32 seatIndex,
     Player* bot = seat.Bot.CreateNext(spec, map, _spawnMapId, start);
     if (!bot)
         return nullptr;
+
+    // On a shared continent every env lives in its own phase: its seats see only what it spawns.
+    if (_continent)
+        bot->SetPhaseMask(EnvPhase(env), true);
 
     // Talent points depend on the map for death knights (Ebon Hold, where Create put the bot, only counts
     // quest-rewarded points); recompute them on the spawn map.
@@ -1192,8 +1222,8 @@ void Animus::Curriculum::StageScenario::WriteState(Env const& env, float* state)
     std::fill(state, state + _spec.StateDim, 0.0f);
 
     EnvState const& data = Data(env);
-    float const originX = _spawnPoint.GetPositionX();
-    float const originY = _spawnPoint.GetPositionY();
+    float const originX = SpawnPointFor(env).GetPositionX();
+    float const originY = SpawnPointFor(env).GetPositionY();
 
     state[STATE_EPISODE_TIME] = env.EpisodeLengthMs
         ? std::min(1.0f, float(env.EpisodeElapsedMs) / float(env.EpisodeLengthMs)) : 0.0f;

@@ -20,6 +20,7 @@
 #define ANIMUS_LIB_CURRICULUM_STAGE_DEFINITION_H
 
 #include "Block.h"
+#include "Position.h"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -42,6 +43,7 @@ namespace Animus::Curriculum
         ScriptedPlayer, // an enemy player played by a script
         MirrorSeat,     // the other seat (SeatPlan::Mirror)
         Ambush,         // only ambushers: scripted enemy players attacking the owner (ArenaDefinition::Ambushers)
+        Travel,         // a place to get to (ArenaDefinition::Flying for one best reached in the air)
     };
 
     enum class PullSchedule : uint8
@@ -74,6 +76,8 @@ namespace Animus::Curriculum
         /// Most scripted enemy players that ambush the owner (1 to this many, MAX_AMBUSHERS at most): mid-episode
         /// beside pulls, or from the start against Opposition::Ambush. 0 = none.
         uint32 Ambushers = 0;
+        /// Travel: the objective is far enough that flying beats riding (the stage's map must allow flight).
+        bool Flying = false;
 
         [[nodiscard]] uint32 SeatCount() const;
     };
@@ -95,6 +99,12 @@ namespace Animus::Curriculum
         std::vector<BlockId> Blocks;    // in layout order: every block any of its arenas needs
         std::vector<ArenaDefinition> Arenas;
         bool InDefaultQueue = true;     // trained by an empty AnimusForge.Queue (false: only when named)
+        /// Where its envs are: 0 = the host's StageSettings::SpawnMapId and SpawnPosition. A continent (not
+        /// instanceable) is shared by every env, so each env gets its own phase and one of SpawnPoints by env index.
+        uint32 MapId = 0;
+        std::vector<Position> SpawnPoints{};
+        /// The lowest level its characters may be (flying needs 60), raising a host's fixed level too.
+        uint8 MinLevel = 0;
 
         [[nodiscard]] bool Has(BlockId block) const;
         /// Seats per env: the largest arena's.

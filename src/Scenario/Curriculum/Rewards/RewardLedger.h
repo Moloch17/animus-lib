@@ -54,6 +54,8 @@ namespace Animus::Curriculum
         TeammateDeath,
         Revive,
         PlayerKill,
+        Progress,
+        Arrive,
         Count
     };
 

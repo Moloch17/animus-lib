@@ -148,6 +148,19 @@ Map* Animus::BotFactory::PlaceInNewInstance(Player* bot, uint32 mapId, Position 
     return PlaceInMap(bot, map, pos) ? map : nullptr;
 }
 
+Map* Animus::BotFactory::PlaceOnContinent(Player* bot, uint32 mapId, Position const& pos)
+{
+    Map* map = sMapMgr->CreateBaseMap(mapId);
+    if (!map || map->Instanceable())
+    {
+        LOG_ERROR("module.animus", "Map {} is not a continent for bot {}", mapId, bot->GetName());
+        return nullptr;
+    }
+
+    map->LoadGrid(pos.GetPositionX(), pos.GetPositionY());
+    return PlaceInMap(bot, map, pos) ? map : nullptr;
+}
+
 bool Animus::BotFactory::PlaceInMap(Player* bot, Map* map, Position const& pos)
 {
     // Player::Create parked the bot on its race's start continent; move it before entering.

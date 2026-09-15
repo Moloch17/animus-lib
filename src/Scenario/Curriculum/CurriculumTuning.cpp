@@ -98,6 +98,16 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     order(tuning.ScriptedPlayers.WanderMinMs, tuning.ScriptedPlayers.WanderMaxMs);
     order(tuning.ScriptedPlayers.ControlMinMs, tuning.ScriptedPlayers.ControlMaxMs);
 
+    auto const orderYards = [](float& low, float& high)
+    {
+        low = std::max(0.0f, low);
+        high = std::max(0.0f, high);
+        if (low > high)
+            std::swap(low, high);
+    };
+    orderYards(tuning.Travel.ObjectiveMin, tuning.Travel.ObjectiveMax);
+    orderYards(tuning.Travel.FlyingMin, tuning.Travel.FlyingMax);
+
     tuning.Party.SizeWeight1 = std::max(0, tuning.Party.SizeWeight1);
     tuning.Party.SizeWeight2 = std::max(0, tuning.Party.SizeWeight2);
     tuning.Party.SizeWeight3 = std::max(0, tuning.Party.SizeWeight3);

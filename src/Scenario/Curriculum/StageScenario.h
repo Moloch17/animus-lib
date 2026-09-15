@@ -133,6 +133,13 @@ namespace Animus::Curriculum
         [[nodiscard]] bool Uses(Env const& env, Encounter const& encounter) const;
         [[nodiscard]] CurriculumTuning const& Tuning() const { return _tuning; }
         [[nodiscard]] Position const& SpawnPoint() const { return _spawnPoint; }
+        /// Where the env's seats start: the stage's spawn point for the env (StageDefinition::SpawnPoints), else
+        /// SpawnPoint().
+        [[nodiscard]] Position const& SpawnPointFor(Env const& env) const;
+        /// Whether the envs share a continent (each in its own phase) rather than each having an instance.
+        [[nodiscard]] bool OnContinent() const { return _continent; }
+        /// The phase of the env's seats and everything they meet on a continent.
+        [[nodiscard]] static uint32 EnvPhase(Env const& env);
         [[nodiscard]] uint32 SpawnMapId() const { return _spawnMapId; }
         [[nodiscard]] uint32 SeatCount() const { return _seatCount; }
         /// Decision interval / 50 ms: per-decision reward terms are tuned per 50 ms and scaled by this, so they mean
@@ -209,6 +216,7 @@ namespace Animus::Curriculum
         CurriculumTuning _tuning;
         uint32 _spawnMapId;
         Position _spawnPoint;
+        bool _continent = false;
         uint32 _seatCount = 1;
         uint32 _level = 0;                  // StageSettings::Level: every character's level, 0 = random
         float _decisionScale = 1.0f;

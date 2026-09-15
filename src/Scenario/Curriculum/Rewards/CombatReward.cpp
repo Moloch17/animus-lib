@@ -52,6 +52,8 @@ std::string_view Animus::Curriculum::RewardTermName(RewardTerm term)
         case RewardTerm::TeammateDeath:         return "teammate_death";
         case RewardTerm::Revive:                return "revive";
         case RewardTerm::PlayerKill:            return "player_kill";
+        case RewardTerm::Progress:              return "progress";
+        case RewardTerm::Arrive:                return "arrive";
         case RewardTerm::Count:                 break;
     }
 

@@ -22,6 +22,7 @@
 #include "Player.h"
 #include "SpellChecks.h"
 #include "Supplies.h"
+#include "TravelBlock.h"
 
 Animus::Curriculum::SeatCharacter::Built Animus::Curriculum::SeatCharacter::Configure(Player* bot,
     Layout const& layout, uint8 specIndex, bool pvp)
@@ -36,6 +37,8 @@ Animus::Curriculum::SeatCharacter::Built Animus::Curriculum::SeatCharacter::Conf
     built.UnspentTalentPoints = assets.Talents->Apply(bot, built.Build);
 
     assets.Kit->Learn(bot);
+    if (layout.Has(BlockId::Travel))
+        TravelBlock::LearnRiding(bot);
     assets.Talents->ApplyGlyphs(bot, spec.Name);
     assets.Gear->Equip(bot, spec, pvp);
 
