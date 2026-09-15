@@ -67,14 +67,24 @@ Animus::Curriculum::Layout Animus::Curriculum::Layout::Build(ClassRoleProfile co
     layout.Assets = &ClassRoleAssets::For(profile);
     layout.Blocks = stage.Blocks;
 
-    // Heals that take a friendly unit target, resurrections and the soulstone can be cast on an ally (companion and
-    // party blocks).
+    // Positive spells that take a friendly unit target, resurrections and the soulstone can be cast on an ally
+    // (companion and party blocks): the heals first, then everything else a player casts on a friend.
     if (stage.Has(BlockId::Companion) || stage.Has(BlockId::Party))
     {
+        auto const onAlly = [](ActionCatalog::Action const& action)
+        {
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(action.FirstRank);
+            return info && info->IsPositive() && info->NeedsExplicitUnitTarget();
+        };
+
         for (ActionCatalog::Action const& heal : layout.Catalog().Sustain())
-            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(heal.FirstRank);
-                info && info->IsPositive() && info->NeedsExplicitUnitTarget())
-                layout.AllyHeals.push_back(heal);
+            if (onAlly(heal))
+                layout.AllySpells.push_back(heal);
+        layout.AllyHealCount = uint32(layout.AllySpells.size());
+
+        for (ActionCatalog::Action const& action : layout.Catalog().Actions())
+            if (action.Type == ActionCatalog::Kind::Spell && onAlly(action))
+                layout.AllySpells.push_back(action);
 
         layout.AllyRevives = layout.Catalog().Revives();
     }

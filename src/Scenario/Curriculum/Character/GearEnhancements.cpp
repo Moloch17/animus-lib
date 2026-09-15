@@ -22,6 +22,7 @@
  */
 
 #include "GearBuilder.h"
+#include "ActionCatalog.h"
 #include "DBCStores.h"
 #include "GearStats.h"
 #include "Item.h"
@@ -44,6 +45,17 @@ namespace
         SPELL_RUNE_OF_RAZORICE              = 53343,
         SPELL_RUNE_OF_THE_STONESKIN_GARGOYLE = 62158,
     };
+
+    /// First ranks of the shaman weapon imbues.
+    enum ImbueSpells : uint32
+    {
+        SPELL_ROCKBITER_WEAPON              = 8017,
+        SPELL_FLAMETONGUE_WEAPON            = 8024,
+        SPELL_WINDFURY_WEAPON               = 8232,
+        SPELL_EARTHLIVING_WEAPON            = 51730,
+    };
+
+    constexpr uint32 IMBUE_DURATION_MS = 1800 * IN_MILLISECONDS;    // 30 minutes, as the spells last
 
     /// Levels at which every slot is enchanted and every socket filled: the expansion level caps, where characters
     /// are geared for dungeons. While levelling, each item is enchanted and socketed with this chance.
@@ -198,6 +210,49 @@ void Animus::Curriculum::GearBuilder::Enhance(Player* bot, SpecProfile const& sp
 
     Runeforge(bot, spec);
     ApplyPoisons(bot);
+    ApplyImbues(bot, spec);
+}
+
+void Animus::Curriculum::GearBuilder::ApplyImbues(Player* bot, SpecProfile const& spec) const
+{
+    if (_class != CLASS_SHAMAN)
+        return;
+
+    auto const imbue = [bot](Item* weapon, uint32 firstRank)
+    {
+        SpellInfo const* spell = weapon && weapon->GetTemplate()->Class == ITEM_CLASS_WEAPON
+            ? ActionCatalog::KnownRank(bot, firstRank) : nullptr;
+        if (!spell || !weapon->IsFitToSpellRequirements(spell))
+            return false;
+
+        uint32 const enchantId = EnchantOf(spell, SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY);
+        if (!sSpellItemEnchantmentStore.LookupEntry(enchantId))
+            return false;
+
+        SetEnchantment(bot, weapon, TEMP_ENCHANTMENT_SLOT, enchantId, IMBUE_DURATION_MS);
+        return true;
+    };
+
+    Item* mainHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
+    Item* offHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+
+    switch (spec.Stats)
+    {
+        case StatProfile::AgilityMelee:     // enhancement: Windfury in the main hand, Flametongue in the off hand
+            if (!imbue(mainHand, SPELL_WINDFURY_WEAPON))
+                imbue(mainHand, SPELL_FLAMETONGUE_WEAPON);
+            if (!imbue(offHand, SPELL_FLAMETONGUE_WEAPON))
+                imbue(offHand, SPELL_ROCKBITER_WEAPON);
+            break;
+        case StatProfile::Healer:           // restoration
+            if (!imbue(mainHand, SPELL_EARTHLIVING_WEAPON))
+                imbue(mainHand, SPELL_FLAMETONGUE_WEAPON);
+            break;
+        default:                            // elemental
+            if (!imbue(mainHand, SPELL_FLAMETONGUE_WEAPON))
+                imbue(mainHand, SPELL_ROCKBITER_WEAPON);
+            break;
+    }
 }
 
 void Animus::Curriculum::GearBuilder::EnchantItem(Player* bot, Item* item, StatProfile stats) const

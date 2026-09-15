@@ -61,7 +61,7 @@ namespace
             return teammate && teammate->IsAlive() && Encoding::SlotAttacking(view, teammate, view.TargetSlot) >= 0;
         }
 
-        uint32 const heals = uint32(view.L->AllyHeals.size());
+        uint32 const heals = uint32(view.L->AllySpells.size());
         uint32 const index = action - PartyBlock::ACTION_HEAL_FIRST;
         if (index >= PARTY_MEMBERS * heals)
         {
@@ -73,14 +73,14 @@ namespace
         }
 
         Player* teammate = view.Teammates[index / heals].Bot;
-        return teammate && teammate->IsAlive() && Encoding::CanHeal(bot, view.L->AllyHeals[index % heals], teammate);
+        return teammate && teammate->IsAlive() && Encoding::CanHeal(bot, view.L->AllySpells[index % heals], teammate);
     }
 }
 
 Animus::Curriculum::BlockSize Animus::Curriculum::PartyBlock::Size(Layout const& layout) const
 {
     return { OBS_GLOBAL_COUNT + PARTY_MEMBERS * MEMBER_FEATURES,
-        ACTION_HEAL_FIRST + PARTY_MEMBERS * uint32(layout.AllyHeals.size() + layout.AllyRevives.size()) };
+        ACTION_HEAL_FIRST + PARTY_MEMBERS * uint32(layout.AllySpells.size() + layout.AllyRevives.size()) };
 }
 
 void Animus::Curriculum::PartyBlock::DescribeManifest(Layout const& /*layout*/, boost::json::object& block) const
@@ -190,7 +190,7 @@ void Animus::Curriculum::PartyBlock::Apply(SeatView& view, uint32 local, SeatAct
         return;
     }
 
-    uint32 const heals = uint32(view.L->AllyHeals.size());
+    uint32 const heals = uint32(view.L->AllySpells.size());
     uint32 const index = local - ACTION_HEAL_FIRST;
     if (index >= PARTY_MEMBERS * heals)
     {
@@ -201,5 +201,5 @@ void Animus::Curriculum::PartyBlock::Apply(SeatView& view, uint32 local, SeatAct
         return;
     }
 
-    Encoding::Heal(bot, view.L->AllyHeals[index % heals], view.Teammates[index / heals].Bot, result);
+    Encoding::Heal(bot, view.L->AllySpells[index % heals], view.Teammates[index / heals].Bot, result);
 }

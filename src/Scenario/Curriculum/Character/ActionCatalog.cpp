@@ -56,15 +56,8 @@ namespace
             case SPELL_EFFECT_ENCHANT_ITEM:
             case SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY:
             case SPELL_EFFECT_ENCHANT_HELD_ITEM:
-            case SPELL_EFFECT_CHARGE:
-            case SPELL_EFFECT_CHARGE_DEST:
-            case SPELL_EFFECT_JUMP:
-            case SPELL_EFFECT_JUMP_DEST:
-            case SPELL_EFFECT_LEAP:
-            case SPELL_EFFECT_LEAP_BACK:
             case SPELL_EFFECT_PICKPOCKET:
             case SPELL_EFFECT_SUMMON_OBJECT_WILD:
-            case SPELL_EFFECT_SUMMON_OBJECT_SLOT1:
             case SPELL_EFFECT_PROSPECTING:
             case SPELL_EFFECT_MILLING:
             case SPELL_EFFECT_DISENCHANT:
@@ -99,8 +92,6 @@ namespace
             case SPELL_AURA_BIND_SIGHT:
             case SPELL_AURA_MOD_POSSESS:
             case SPELL_AURA_MOD_CHARM:
-            case SPELL_AURA_MOD_INVISIBILITY:
-            case SPELL_AURA_FEIGN_DEATH:
             case SPELL_AURA_GHOST:
                 return true;
             default:
@@ -165,6 +156,35 @@ namespace
         }
     }
 
+    /// What separates a player from a rotation: getting somewhere (speed), not getting hit (avoidance, immunity,
+    /// reflection, breaking or preventing crowd control), losing or handing on threat, and lasting longer.
+    bool IsSurvivalAura(uint32 aura)
+    {
+        switch (aura)
+        {
+            case SPELL_AURA_MOD_INCREASE_SPEED:
+            case SPELL_AURA_MECHANIC_IMMUNITY:
+            case SPELL_AURA_SCHOOL_IMMUNITY:
+            case SPELL_AURA_DISPEL_IMMUNITY:
+            case SPELL_AURA_MOD_DODGE_PERCENT:
+            case SPELL_AURA_MOD_PARRY_PERCENT:
+            case SPELL_AURA_MOD_BLOCK_PERCENT:
+            case SPELL_AURA_REFLECT_SPELLS:
+            case SPELL_AURA_REFLECT_SPELLS_SCHOOL:
+            case SPELL_AURA_DEFLECT_SPELLS:
+            case SPELL_AURA_MOD_TOTAL_THREAT:
+            case SPELL_AURA_MOD_THREAT:
+            case SPELL_AURA_FEIGN_DEATH:
+            case SPELL_AURA_MOD_INVISIBILITY:
+            case SPELL_AURA_SPLIT_DAMAGE_PCT:
+            case SPELL_AURA_MOD_INCREASE_HEALTH:
+            case SPELL_AURA_230:                // increases maximum health (Commanding Shout)
+                return true;
+            default:
+                return false;
+        }
+    }
+
     std::string ActionName(SpellInfo const* info)
     {
         std::string name;
@@ -218,13 +238,22 @@ bool Animus::Curriculum::ActionCatalog::IsCombatSpell(SpellInfo const* info)
             case SPELL_EFFECT_TRIGGER_SPELL:
             case SPELL_EFFECT_DUMMY:
             case SPELL_EFFECT_SCRIPT_EFFECT:
+            // Closing in and getting away: Charge, Intercept, Intervene, Blink, Disengage.
+            case SPELL_EFFECT_CHARGE:
+            case SPELL_EFFECT_CHARGE_DEST:
+            case SPELL_EFFECT_JUMP:
+            case SPELL_EFFECT_JUMP_DEST:
+            case SPELL_EFFECT_LEAP:
+            case SPELL_EFFECT_LEAP_BACK:
+            case SPELL_EFFECT_REDIRECT_THREAT:   // Misdirection, Tricks of the Trade
+            case SPELL_EFFECT_STEAL_BENEFICIAL_BUFF:
                 useful = true;
                 break;
             case SPELL_EFFECT_APPLY_AURA:
             case SPELL_EFFECT_APPLY_AREA_AURA_PARTY:
             case SPELL_EFFECT_APPLY_AREA_AURA_RAID:
             case SPELL_EFFECT_PERSISTENT_AREA_AURA:
-                useful |= IsDamageRelevantAura(effect.ApplyAuraName);
+                useful |= IsDamageRelevantAura(effect.ApplyAuraName) || IsSurvivalAura(effect.ApplyAuraName);
                 break;
             default:
                 break;
@@ -385,6 +414,10 @@ bool Animus::Curriculum::ActionCatalog::IsTacticalSpell(SpellInfo const* info)
             case SPELL_EFFECT_KNOCK_BACK:
             case SPELL_EFFECT_ATTACK_ME:
             case SPELL_EFFECT_DISTRACT:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT1:  // traps
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT2:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT3:
+            case SPELL_EFFECT_SUMMON_OBJECT_SLOT4:
                 tactical = true;
                 break;
             case SPELL_EFFECT_DISPEL:
@@ -402,7 +435,13 @@ bool Animus::Curriculum::ActionCatalog::IsTacticalSpell(SpellInfo const* info)
                     case SPELL_AURA_MOD_ROOT:
                     case SPELL_AURA_TRANSFORM:
                     case SPELL_AURA_MOD_TAUNT:
+                    case SPELL_AURA_MOD_DISARM:
+                    case SPELL_AURA_MOD_DISARM_OFFHAND:
+                    case SPELL_AURA_MOD_DISARM_RANGED:
                         tactical = true;
+                        break;
+                    case SPELL_AURA_MOD_DECREASE_SPEED:     // snares on an enemy, not a slowed stealth
+                        tactical |= !info->IsPositive();
                         break;
                     default:
                         break;

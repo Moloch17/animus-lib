@@ -144,6 +144,9 @@ namespace Animus::Curriculum
         void SocketItem(Player* bot, Item* item, StatProfile stats, std::vector<std::pair<Item*, uint8>>& metas) const;
         void Runeforge(Player* bot, SpecProfile const& spec) const;
         void ApplyPoisons(Player* bot) const;
+        /// Shamans: the spec's standard weapon imbues (Windfury and Flametongue, Flametongue, Earthliving), the highest
+        /// rank the character knows, as a player keeps them up.
+        void ApplyImbues(Player* bot, SpecProfile const& spec) const;
         void EquipQuiver(Player* bot) const;
 
         /// Candidates for the level from a pool, reaching below the level's item level band as needed.

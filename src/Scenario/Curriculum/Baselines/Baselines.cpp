@@ -66,7 +66,7 @@ namespace
     {
         // A living target's health; not the distance, which is 0 in melee range (it is measured between reaches).
         bool const hasTarget = row.Obs(BlockId::Core, CoreBlock::OBS_TARGET_HEALTH) > 0.0f;
-        uint32 const heals = uint32(layout.AllyHeals.size());
+        uint32 const heals = layout.AllyHealCount;
 
         if (row.Has(BlockId::Gauntlet) && !hasTarget)
         {
@@ -104,9 +104,11 @@ namespace
                     || row.Obs(BlockId::Party, first + PartyBlock::MEMBER_HEALTH) >= HEAL_TEAMMATE_BELOW)
                     continue;
 
+                // Ally actions are laid out per teammate, every ally spell each; the heals come first.
+                uint32 const stride = uint32(layout.AllySpells.size());
                 for (uint32 heal = 0; heal < heals; ++heal)
                     if (std::optional<int32> action = row.Allowed(BlockId::Party,
-                        PartyBlock::ACTION_HEAL_FIRST + member * heals + heal))
+                        PartyBlock::ACTION_HEAL_FIRST + member * stride + heal))
                         return action;
             }
         }
