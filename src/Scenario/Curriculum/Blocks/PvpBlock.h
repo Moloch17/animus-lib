@@ -23,7 +23,8 @@
 
 namespace Animus::Curriculum
 {
-    /// An enemy player: its class, role, resources and state, and the loss-of-control effects on the bot. No actions:
+    /// An enemy player: its class, role, resources and state, the cooldowns a player keeps track of, and the
+    /// loss-of-control effects on the bot. A hidden opponent shows only what the bot knows or remembers. No actions:
     /// the core and duel actions fight it.
     class PvpBlock final : public Block
     {
@@ -43,7 +44,13 @@ namespace Animus::Curriculum
             OBS_BOT_ROOTED              = 21,
             OBS_BOT_SILENCED            = 22,
             OBS_MIRROR                  = 23,   // the opponent is a learned agent too
-            OBS_COUNT                   = 24
+            // What a player keeps track of from what it saw the opponent use (seen or not, it stays on cooldown).
+            OBS_OPPONENT_TRINKET_CD     = 24,   // its trinkets' cooldown left, the longer one, as a fraction
+            OBS_OPPONENT_BREAK_CD       = 25,   // its racial control break (Every Man for Himself, Will of the
+                                                // Forsaken) cooldown left, as a fraction; 0 without one
+            OBS_OPPONENT_MAJOR_CDS      = 26,   // its spells with a cooldown of a minute or more now cooling down / 4
+            OBS_OPPONENT_HIDDEN         = 27,   // the bot can neither see nor detect it: only the above is written
+            OBS_COUNT                   = 28
         };
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Pvp; }

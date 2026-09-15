@@ -67,10 +67,11 @@ namespace Animus::Curriculum
             float DamageDealt = 2.0f;           // fraction of the opponent's health: a kill is worth this in damage
             float DamageTaken = 1.0f;           // fraction of the bot's health
             float Approach = 0.5f;              // shaping toward the spec's range, per 40 yd closed
-            float StealthOpener = 0.5f;
+            float StealthOpener = 0.5f;         // a harmful spell from stealth that breaks it (Ambush, Cheap Shot)
+            float StealthUtility = 0.05f;       // one that keeps it (Sap, Distract), once per target per stealth
             float StepCost = 0.0002f;           // per decision
             float Kill = 2.0f;
-            float FastKill = 3.0f;              // times the fraction of the episode still left
+            float FastKill = 3.0f;              // times the fraction of the episode length left, from the engagement
             float HealthKept = 2.0f;            // times the fraction of the bot's health not lost
             float Death = 3.0f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
@@ -107,12 +108,13 @@ namespace Animus::Curriculum
             float GauntletDamageTaken = 1.5f;   // gauntlet on: surviving many pulls matters more than any one
             float Approach = 0.5f;
             float StealthOpener = 0.5f;
+            float StealthUtility = 0.05f;
             float Interrupt = 0.3f;
             float Kill = 0.5f;
             float StepCost = 0.0002f;           // per decision
             float Clear = 2.0f;
-            float FastClear = 3.0f;             // pack: times the fraction of the episode still left
-            float FastPull = 2.0f;              // gauntlet: times 1 - pull time / 60 s
+            float FastClear = 3.0f;             // pack: times the episode fraction left after engaging
+            float FastPull = 2.0f;              // gauntlet: times 1 - time since the pull engaged / 60 s
             float HealthKept = 2.0f;            // times the fraction of the bot's health not lost this pull
             float PackDeath = 3.0f;
             float GauntletDeath = 5.0f;
@@ -185,6 +187,7 @@ namespace Animus::Curriculum
             float TauntRange = 25.0f;
             float RangedMin = 20.0f;            // PvP: a ranged spec backs off inside half this ...
             float RangedMax = 30.0f;            // ... and closes in beyond this
+            int32 StealthChance = 50;           // PvP: percent of engagements a rogue sneaks up in stealth
         } ScriptedPlayers;
 
         /// Calls f(key, value) for every value, key relative to the tuning prefix (AnimusForge.Curriculum., ...).
@@ -211,6 +214,7 @@ namespace Animus::Curriculum
             f("Duel.DamageTaken", tuning.Duel.DamageTaken);
             f("Duel.Approach", tuning.Duel.Approach);
             f("Duel.StealthOpener", tuning.Duel.StealthOpener);
+            f("Duel.StealthUtility", tuning.Duel.StealthUtility);
             f("Duel.StepCost", tuning.Duel.StepCost);
             f("Duel.Kill", tuning.Duel.Kill);
             f("Duel.FastKill", tuning.Duel.FastKill);
@@ -241,6 +245,7 @@ namespace Animus::Curriculum
             f("Pulls.GauntletDamageTaken", tuning.Pulls.GauntletDamageTaken);
             f("Pulls.Approach", tuning.Pulls.Approach);
             f("Pulls.StealthOpener", tuning.Pulls.StealthOpener);
+            f("Pulls.StealthUtility", tuning.Pulls.StealthUtility);
             f("Pulls.Interrupt", tuning.Pulls.Interrupt);
             f("Pulls.Kill", tuning.Pulls.Kill);
             f("Pulls.StepCost", tuning.Pulls.StepCost);
@@ -296,6 +301,7 @@ namespace Animus::Curriculum
             f("ScriptedPlayers.TauntRange", tuning.ScriptedPlayers.TauntRange);
             f("ScriptedPlayers.RangedMin", tuning.ScriptedPlayers.RangedMin);
             f("ScriptedPlayers.RangedMax", tuning.ScriptedPlayers.RangedMax);
+            f("ScriptedPlayers.StealthChance", tuning.ScriptedPlayers.StealthChance);
         }
 
         /// The values of the config keys <prefix><key>, each defaulting to the value above; min/max pairs are

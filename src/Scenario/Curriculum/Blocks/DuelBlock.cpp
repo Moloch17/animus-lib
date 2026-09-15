@@ -89,9 +89,18 @@ namespace
                 break;
         }
 
+        bool const canMove = !casting && !bot->HasUnitState(Encoding::IMMOBILE_STATES);
+
+        // A target it cannot see: all it can do about it is go look where it was last seen.
+        if (!target && view.HiddenTarget && view.TargetSeen)
+        {
+            if (action == DuelBlock::ACTION_MOVE_TO_TARGET)
+                return canMove;
+            return action == DuelBlock::ACTION_STOP && !bot->movespline->Finalized();
+        }
+
         if (!target || !target->IsAlive())
             return false;
-        bool const canMove = !casting && !bot->HasUnitState(Encoding::IMMOBILE_STATES);
 
         switch (action)
         {
@@ -193,6 +202,30 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
                 features[2 + family->petTalentType] = 1.0f;     // ferocity, tenacity, cunning
     }
 
+    if (!target && view.HiddenTarget)
+    {
+        obs[OBS_TARGET_HIDDEN] = 1.0f;
+        if (view.TargetSeen)
+        {
+            float const bearing = bot->GetRelativeAngle(&view.LastSeen);
+            obs[OBS_TARGET_UNSEEN_TIME] = view.TargetUnseenTime;
+            obs[OBS_LAST_SEEN_DISTANCE] = std::min(1.0f, bot->GetExactDist(&view.LastSeen) / 60.0f);
+            obs[OBS_LAST_SEEN_BEARING_SIN] = std::sin(bearing);
+            obs[OBS_LAST_SEEN_BEARING_COS] = std::cos(bearing);
+        }
+
+        // Its own state it still knows.
+        obs[OBS_BOT_MOVING] = bot->movespline->Finalized() ? 0.0f : 1.0f;
+        obs[OBS_BOT_IN_COMBAT] = bot->IsInCombat() ? 1.0f : 0.0f;
+        obs[OBS_BOT_STEALTHED] = bot->HasStealthAura() ? 1.0f : 0.0f;
+        obs[OBS_DAMAGE_TAKEN] = view.LastStepDamageTaken;
+        if (Unit* pet = Encoding::FirstPet(bot))
+        {
+            obs[OBS_PET_OUT] = 1.0f;
+            obs[OBS_PET_HEALTH] = pet->GetHealthPct() / 100.0f;
+        }
+    }
+
     if (target)
     {
         float const bearing = bot->GetRelativeAngle(target);
@@ -287,6 +320,20 @@ void Animus::Curriculum::DuelBlock::Apply(SeatView& view, uint32 local, SeatActi
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;
+
+    if (!target)
+    {
+        // Allowed without a target only to search for a hidden one, or to stop.
+        if (local == ACTION_MOVE_TO_TARGET)
+            Encoding::MoveTo(bot, DUEL_MOVE_POINT_ID, view.LastSeen.GetPositionX(), view.LastSeen.GetPositionY(),
+                view.LastSeen.GetPositionZ());
+        else if (local == ACTION_STOP)
+        {
+            bot->GetMotionMaster()->Clear();
+            bot->StopMoving();
+        }
+        return;
+    }
 
     switch (local)
     {

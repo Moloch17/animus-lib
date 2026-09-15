@@ -21,7 +21,22 @@
 #include "Layout.h"
 #include "Player.h"
 #include "Spell.h"
+#include "SpellChecks.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
+#include "Timer.h"
+#include <algorithm>
+
+namespace
+{
+    enum PvpSpells : uint32
+    {
+        SPELL_EVERY_MAN_FOR_HIMSELF = 59752,
+        SPELL_WILL_OF_THE_FORSAKEN  = 7744,
+    };
+
+    constexpr uint32 MAJOR_COOLDOWN_MS = 60000;
+}
 
 Animus::Curriculum::BlockSize Animus::Curriculum::PvpBlock::Size(Layout const& /*layout*/) const
 {
@@ -44,8 +59,32 @@ void Animus::Curriculum::PvpBlock::Observe(SeatView const& view, float* obs, uin
 
     WriteOneHot(PLAYABLE_CLASSES, view.OpponentClass, obs + OBS_OPPONENT_CLASS_FIRST);
     obs[OBS_OPPONENT_ROLE_FIRST + uint32(view.OpponentRole)] = 1.0f;
-
     obs[OBS_OPPONENT_LEVEL_DIFF] = (float(opponent->GetLevel()) - float(bot->GetLevel())) / 5.0f;
+
+    for (uint8 slot : { EQUIPMENT_SLOT_TRINKET1, EQUIPMENT_SLOT_TRINKET2 })
+        if (SpellInfo const* use = Encoding::TrinketSpell(opponent->GetItemByPos(INVENTORY_SLOT_BAG_0, slot)))
+            obs[OBS_OPPONENT_TRINKET_CD] = std::max(obs[OBS_OPPONENT_TRINKET_CD],
+                Animus::SpellChecks::CooldownFraction(opponent, use));
+
+    for (uint32 racial : { SPELL_EVERY_MAN_FOR_HIMSELF, SPELL_WILL_OF_THE_FORSAKEN })
+        if (opponent->HasSpell(racial))
+            if (SpellInfo const* info = sSpellMgr->GetSpellInfo(racial))
+                obs[OBS_OPPONENT_BREAK_CD] = Animus::SpellChecks::CooldownFraction(opponent, info);
+
+    // Only spells on cooldown are in the map, so this stays cheap.
+    uint32 const now = getMSTime();
+    uint32 majors = 0;
+    for (auto const& [spellId, cooldown] : opponent->GetSpellCooldownMap())
+        if (!cooldown.itemid && cooldown.end > now && cooldown.maxduration >= MAJOR_COOLDOWN_MS)
+            ++majors;
+    obs[OBS_OPPONENT_MAJOR_CDS] = std::min(1.0f, float(majors) / 4.0f);
+
+    if (view.OpponentHidden)
+    {
+        obs[OBS_OPPONENT_HIDDEN] = 1.0f;
+        return;
+    }
+
     if (uint32 const maxMana = opponent->GetMaxPower(POWER_MANA))
         obs[OBS_OPPONENT_MANA] = float(opponent->GetPower(POWER_MANA)) / float(maxMana);
 

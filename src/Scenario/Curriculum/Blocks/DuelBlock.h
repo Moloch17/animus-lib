@@ -62,8 +62,14 @@ namespace Animus::Curriculum
             OBS_SOULSTONE_ON_BOT        = 27,   // the bot will be able to resurrect itself if it dies
             OBS_DEAD                    = 28,
             OBS_SELF_RESURRECT          = 29,   // dead, and able to resurrect itself (Soulstone, Reincarnation)
-            OBS_STABLE_FIRST            = 30,   // hunters: per stable slot STABLE_FEATURES
-            OBS_COUNT_WITHOUT_STABLE    = 30
+            // The target hides (stealth, invisibility): every live target feature above is 0, these remember it.
+            OBS_TARGET_HIDDEN           = 30,
+            OBS_TARGET_UNSEEN_TIME      = 31,   // time since the bot last saw it / 20 s
+            OBS_LAST_SEEN_DISTANCE      = 32,   // yards to where it was last seen / 60
+            OBS_LAST_SEEN_BEARING_SIN   = 33,   // direction to that place relative to the bot's facing
+            OBS_LAST_SEEN_BEARING_COS   = 34,
+            OBS_STABLE_FIRST            = 35,   // hunters: per stable slot STABLE_FEATURES
+            OBS_COUNT_WITHOUT_STABLE    = 35
         };
 
         /// Per stabled beast: offered, family / 50, ferocity, tenacity, cunning.
@@ -71,7 +77,8 @@ namespace Animus::Curriculum
 
         enum Action : uint32
         {
-            ACTION_MOVE_TO_TARGET       = 0,    // run to melee reach, on the side the bot is on
+            ACTION_MOVE_TO_TARGET       = 0,    // run to melee reach, on the side the bot is on; to where a hidden
+                                                // target was last seen
             ACTION_MOVE_BEHIND          = 1,    // run to melee reach behind the target
             ACTION_MOVE_TO_RANGE        = 2,    // run to casting range (MOVE_TO_RANGE_DISTANCE)
             ACTION_BACK_OFF             = 3,    // run BACK_OFF_DISTANCE further away

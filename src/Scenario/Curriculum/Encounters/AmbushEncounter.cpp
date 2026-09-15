@@ -39,8 +39,8 @@ std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::AmbushEncounter:
 {
     // Alone it is a one-on-one; beside pulls only the kills are its own.
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
-        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::Kill, RewardTerm::HealthKept, RewardTerm::Death,
-        RewardTerm::PlayerKill };
+        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Kill,
+        RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::PlayerKill };
 }
 
 void Animus::Curriculum::AmbushEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
@@ -165,13 +165,26 @@ void Animus::Curriculum::AmbushEncounter::Update(Env& env)
         if (!enemy || !enemy->IsAlive() || !lead)
             continue;
 
-        // The owner while it lives, then the nearest living seat.
+        // The owner while it lives, then the nearest living seat it can see (a hidden one only when none is seen).
         Player* victim = owner && owner->IsAlive() ? owner : nullptr;
         if (!victim)
+        {
+            bool victimSeen = false;
             for (uint32 seat = 0; seat < data.ActiveSeats; ++seat)
-                if (Player* bot = _scenario.SeatBot(env, seat); bot && bot->IsAlive()
-                    && (!victim || enemy->GetDistance(bot) < enemy->GetDistance(victim)))
+            {
+                Player* bot = _scenario.SeatBot(env, seat);
+                if (!bot || !bot->IsAlive())
+                    continue;
+
+                bool const seen = enemy->CanSeeOrDetect(bot);
+                if (!victim || (seen && !victimSeen)
+                    || (seen == victimSeen && enemy->GetDistance(bot) < enemy->GetDistance(victim)))
+                {
                     victim = bot;
+                    victimSeen = seen;
+                }
+            }
+        }
         if (!victim)
             continue;
 

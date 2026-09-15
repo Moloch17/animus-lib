@@ -37,7 +37,8 @@ Animus::Curriculum::OpponentEncounter::OpponentEncounter(StageScenario& scenario
 std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::OpponentEncounter::RewardTerms() const
 {
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
-        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::Kill, RewardTerm::HealthKept, RewardTerm::Death };
+        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Kill,
+        RewardTerm::HealthKept, RewardTerm::Death };
 }
 
 void Animus::Curriculum::OpponentEncounter::AddEpisodeInfo(EpisodeInfoTable& table)

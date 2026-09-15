@@ -79,6 +79,7 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     ClampPercent(prefix, "Pulls.HigherLevelChance", tuning.Pulls.HigherLevelChance);
     ClampPercent(prefix, "Pulls.PartyEliteChance", tuning.Pulls.PartyEliteChance);
     ClampPercent(prefix, "Pulls.OwnerPullsChance", tuning.Pulls.OwnerPullsChance);
+    ClampPercent(prefix, "ScriptedPlayers.StealthChance", tuning.ScriptedPlayers.StealthChance);
     ClampRolePair(prefix, "Owner.TankChance", tuning.Owner.TankChance, "Owner.HealerChance", tuning.Owner.HealerChance);
     ClampRolePair(prefix, "Opponent.TankChance", tuning.Opponent.TankChance, "Opponent.HealerChance",
         tuning.Opponent.HealerChance);

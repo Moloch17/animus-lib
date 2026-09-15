@@ -35,6 +35,7 @@ namespace Animus::Curriculum
         Casting,
         Approach,
         StealthOpener,
+        StealthUtility,
         Interrupt,
         Kill,
         Clear,

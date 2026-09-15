@@ -45,6 +45,8 @@ namespace
     constexpr float WANDER_MAX_DISTANCE = 20.0f;
     constexpr float WANDER_LEASH = 30.0f;       // never wander further than this from home
     constexpr float HEAL_RANGE = 40.0f;
+    constexpr uint32 SEARCH_REPATH_MS = 2500;   // a hidden enemy: time between search steps
+    constexpr float SEARCH_RADIUS = 10.0f;      // ... around where it was last seen
 
     bool IsHeal(SpellInfo const* info)
     {
@@ -57,6 +59,20 @@ namespace
                 return true;
 
         return false;
+    }
+
+    /// Stealth itself: a stealth form (not Prowl, which needs Cat Form, nor Shadowmeld, which moving breaks).
+    bool IsStealth(SpellInfo const* info)
+    {
+        return info && !info->IsPassive() && info->HasAura(SPELL_AURA_MOD_STEALTH)
+            && info->HasAura(SPELL_AURA_MOD_SHAPESHIFT);
+    }
+
+    /// A harmful single-target spell only usable from stealth that starts the fight (not Sap, which keeps stealth).
+    bool IsOpener(SpellInfo const* info)
+    {
+        return info && !info->IsPassive() && info->HasAttribute(SPELL_ATTR0_ONLY_STEALTHED) && !info->IsPositive()
+            && info->NeedsExplicitUnitTarget() && !info->HasAttribute(SPELL_ATTR1_ALLOW_WHILE_STEALTHED);
     }
 
     bool IsTaunt(SpellInfo const* info)
@@ -163,6 +179,30 @@ namespace
         }
 
         CastSometimes(player, state.Spells, target, nowMs, state.NextSpellMs, tuning.SpellMinMs, tuning.SpellMaxMs);
+    }
+
+    /// An enemy player it cannot see: stop swinging at nothing, go where it was last seen, then look around there.
+    void Search(Player* player, uint32 nowMs, State& state)
+    {
+        if (player->GetVictim())
+            player->AttackStop();
+
+        if (!state.QuarrySeen || nowMs < state.NextMoveMs)
+            return;
+
+        state.NextMoveMs = nowMs + SEARCH_REPATH_MS;
+
+        Position destination = state.LastSeen;
+        if (player->GetExactDist2d(&state.LastSeen) < SEARCH_RADIUS * 0.5f)
+        {
+            float const angle = frand(0.0f, 2.0f * float(M_PI));
+            float const distance = frand(0.0f, SEARCH_RADIUS);
+            destination.Relocate(state.LastSeen.GetPositionX() + distance * std::cos(angle),
+                state.LastSeen.GetPositionY() + distance * std::sin(angle), state.LastSeen.GetPositionZ());
+        }
+
+        player->UpdateAllowedPositionZ(destination.m_positionX, destination.m_positionY, destination.m_positionZ);
+        player->GetMotionMaster()->MovePoint(MOVE_POINT_ID, destination);
     }
 
     /// The enemy to fight: one already on the player, else the nearest.
@@ -296,6 +336,10 @@ void Animus::Curriculum::ScriptedPlayer::Configure(Player* player, ClassRoleAsse
             state.Taunts.push_back(spellId);
         else if (IsHeal(info))
             state.Heals.push_back(spellId);
+        else if (IsStealth(info))
+            state.Stealths.push_back(spellId);
+        else if (IsOpener(info))
+            state.Openers.push_back(spellId);
         else if (ActionCatalog::IsCombatSpell(info) && !info->IsPositive() && info->NeedsExplicitUnitTarget()
             && !info->IsAutoRepeatRangedSpell())
             state.Spells.push_back(spellId);
@@ -342,6 +386,22 @@ void Animus::Curriculum::ScriptedPlayer::UpdateOpponent(Player* player, Player* 
     if (!player || !player->IsAlive() || !enemy || !enemy->IsAlive())
         return;
 
+    // It follows what it can see, from the start: it knows where the enemy was before the fight, not where it went
+    // once hidden.
+    if (state.Quarry != enemy->GetGUID())
+    {
+        state.Quarry = enemy->GetGUID();
+        state.QuarrySeen = false;
+        state.StealthDecided = false;
+    }
+
+    bool const visible = player->CanSeeOrDetect(enemy);
+    if (visible)
+    {
+        state.QuarrySeen = true;
+        state.LastSeen.Relocate(enemy);
+    }
+
     if (player->IsNonMeleeSpellCast(false))
         return;
 
@@ -357,8 +417,30 @@ void Animus::Curriculum::ScriptedPlayer::UpdateOpponent(Player* player, Player* 
     if (nowMs < state.EngageMs)
         return;
 
+    // A rogue may sneak up: once per engagement, before any fighting.
+    if (!state.StealthDecided)
+    {
+        state.StealthDecided = true;
+        if (!state.Stealths.empty() && !player->IsInCombat() && roll_chance_i(tuning.StealthChance))
+            for (uint32 stealth : state.Stealths)
+                if (TryCast(player, stealth, player))
+                    break;
+    }
+
+    if (!visible)
+    {
+        Search(player, nowMs, state);
+        return;
+    }
+
     if (!state.Ranged)
     {
+        // From stealth, open before the first swing breaks it.
+        if (player->HasStealthAura() && player->IsWithinMeleeRange(enemy))
+            for (uint32 opener : state.Openers)
+                if (TryCast(player, opener, enemy))
+                    return;
+
         Fight(player, enemy, nowMs, state, tuning);
         return;
     }

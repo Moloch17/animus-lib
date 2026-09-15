@@ -77,8 +77,8 @@ bool Animus::Curriculum::PullsEncounter::AnyGauntlet() const
 std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::PullsEncounter::RewardTerms() const
 {
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
-        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::Interrupt, RewardTerm::Kill, RewardTerm::Clear,
-        RewardTerm::HealthKept, RewardTerm::Death };
+        RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Interrupt,
+        RewardTerm::Kill, RewardTerm::Clear, RewardTerm::HealthKept, RewardTerm::Death };
 }
 
 void Animus::Curriculum::PullsEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
@@ -247,6 +247,7 @@ bool Animus::Curriculum::PullsEncounter::SpawnPull(Env& env, Map* map)
     pulls.Linked = roll_chance_i(tuning.LinkedChance);
     pulls.PullKills = 0;
     pulls.PullStartMs = env.EpisodeElapsedMs;
+    pulls.PullEngaged = false;
     for (uint32 seat = 0; seat < _scenario.SeatCount(); ++seat)
     {
         data.Seats[seat].TargetSlot = 0;
@@ -461,17 +462,28 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
     // Damage is a fraction of the pull's total health, taken damage a fraction of the bot's.
     float pullHealth = 0.0f;
     Unit* nearest = nullptr;
+    bool fighting = false;
     for (uint32 slot = 0; slot < env.Targets.size(); ++slot)
     {
         Unit* enemy = env.FindTargetUnit(slot);
         if (!enemy)
             continue;
 
+        fighting |= !enemy->IsPlayer() && (!enemy->IsAlive() || enemy->IsInCombat());
+
         // The pull is its creatures; an ambusher is paid for by the ambush, but still a place to close in on.
         if (!enemy->IsPlayer())
             pullHealth += float(enemy->GetMaxHealth());
         if (enemy->IsAlive() && (!nearest || bot->GetDistance(enemy) < bot->GetDistance(nearest)))
             nearest = enemy;
+    }
+
+    // The pull's clock starts when it is engaged, not when it spawns: sizing it up, stealthing in and resting first are
+    // the seat's call. Once per env (every seat sees the same pull).
+    if (!pulls.PullEngaged && fighting)
+    {
+        pulls.PullEngaged = true;
+        pulls.PullEngageMs = env.EpisodeElapsedMs;
     }
 
     if (pullHealth > 0.0f)
@@ -486,11 +498,7 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
     CombatReward::Approach(bot, nearest && bot->IsAlive() ? nearest : nullptr,
         CombatReward::DesiredRange(seat, _scenario.Tuning().Duel), tuning.Approach, tally, ledger);
 
-    if (tally.StepStealthOpener)
-    {
-        ledger.Add(RewardTerm::StealthOpener, tuning.StealthOpener);
-        tally.StepStealthOpener = false;
-    }
+    CombatReward::Stealth(tally, tuning.StealthOpener, tuning.StealthUtility, ledger);
 
     // An interrupt counts when the enemy it was cast at had its cast cut short since: a cast that finished on its own,
     // or an enemy that died, is not one.
@@ -518,10 +526,11 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
     if (pulls.PullCleared)
     {
         float const healthKept = 1.0f - std::min(1.0f, float(pull.PullDamageTaken) / botHealth);
+        uint32 const engageMs = pulls.PullEngaged ? pulls.PullEngageMs : env.EpisodeElapsedMs;
 
         if (Gauntlet(env))
         {
-            float const pullTime = float(env.EpisodeElapsedMs - pulls.PullStartMs);
+            float const pullTime = float(env.EpisodeElapsedMs - engageMs);
             ledger.Add(RewardTerm::Clear,
                 (tuning.Clear + tuning.FastPull * (1.0f - std::min(1.0f, pullTime / PULL_TIME_SCALE_MS))) * clearScale);
             pull.PullDamageTaken = 0;
@@ -534,7 +543,7 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
                 tally.KillTimeMs = env.EpisodeElapsedMs;
             }
 
-            ledger.Add(RewardTerm::Clear, tuning.Clear + tuning.FastClear * CombatReward::TimeLeft(env));
+            ledger.Add(RewardTerm::Clear, tuning.Clear + tuning.FastClear * CombatReward::TimeLeftSince(env, engageMs));
         }
 
         ledger.Add(RewardTerm::HealthKept, tuning.HealthKept * healthKept);

@@ -21,6 +21,8 @@
 
 #include "Block.h"
 #include "BotSlot.h"
+#include "ObjectGuid.h"
+#include "Position.h"
 #include "RewardLedger.h"
 #include "Supplies.h"
 #include "TalentBuilder.h"
@@ -46,8 +48,13 @@ namespace Animus::Curriculum
         uint32 Deaths = 0;
         bool DeathCounted = false;              // the current death has been paid for (again after standing up)
         uint32 DeathMs = 0;                     // episode time of the current death
-        uint32 StealthOpeners = 0;
+        uint32 StealthOpeners = 0;              // harmful spells from stealth that broke it
         bool StepStealthOpener = false;         // one started since the last reward
+        uint32 StealthUtilityCasts = 0;         // harmful spells from stealth that kept it, paid ones
+        uint32 StepStealthUtility = 0;          // paid ones since the last reward
+        std::vector<ObjectGuid> StealthUtilityTargets;  // targets already paid for during the current stealth
+        bool Engaged = false;                   // the fight has started: the bot or its opponent entered combat
+        uint32 EngageMs = 0;                    // episode time it started; the fast kill bonus counts from here
         bool PetSummoned = false;
         uint32 CastsCompleted = 0;
         uint32 CastsCancelled = 0;
@@ -83,6 +90,11 @@ namespace Animus::Curriculum
         uint32 CombatStartMs = 0;               // episode time the bot entered its current combat
         uint32 TargetSlot = 0;                  // the selected enemy (pulls)
 
+        // Where the bot last saw its target, for when the target hides (SeatView::HiddenTarget).
+        ObjectGuid LastSeenGuid;
+        Position LastSeen;
+        uint32 LastSeenMs = 0;
+
         // What the character brought (potions, bandages, stones), and what it did with it.
         BattleSupplies Supplies;
         uint32 ConsumablesUsed = 0;
@@ -104,6 +116,8 @@ namespace Animus::Curriculum
             InCombat = false;
             CombatStartMs = 0;
             TargetSlot = 0;
+            LastSeenGuid.Clear();
+            LastSeenMs = 0;
             Supplies = BattleSupplies();
             ConsumablesUsed = 0;
             SelfResurrections = 0;

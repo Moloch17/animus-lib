@@ -195,6 +195,10 @@ namespace Animus::Curriculum
         /// What the seat's actions aim at: the dummy or creature, the selected pack enemy, the enemy player. Null
         /// between gauntlet pulls.
         [[nodiscard]] Unit* CurrentTarget(Env const& env, uint32 seat);
+        /// Remember where the seat last saw its target, while it can see it.
+        static void TrackTarget(Env const& env, SeatState& seat, Player* bot, Unit* target);
+        /// The seat's view. Enemies the bot can neither see nor detect are left out of it, the target included
+        /// (SeatView::HiddenTarget).
         [[nodiscard]] SeatView ViewSeat(Env const& env, uint32 seat, Player* bot, Unit* target) const;
         void ApplySeatAction(Env& env, uint32 seat, int32 action);
         void ObserveSeat(Env& env, uint32 seat, float* obs, uint8* mask);

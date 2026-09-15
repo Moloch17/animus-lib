@@ -21,6 +21,7 @@
 
 #include "ClassRoleAssets.h"
 #include "CurriculumTuning.h"
+#include "ObjectGuid.h"
 #include "Position.h"
 #include <vector>
 
@@ -49,6 +50,14 @@ namespace Animus::Curriculum::ScriptedPlayer
         std::vector<uint32> Spells;     // harmful single-target combat spells it knows (highest ranks)
         std::vector<uint32> Heals;      // single-target heals it knows
         std::vector<uint32> Taunts;     // single-target taunts it knows
+        std::vector<uint32> Stealths;   // Stealth (rogues): it may sneak up on an enemy player
+        std::vector<uint32> Openers;    // harmful spells only usable from stealth (Cheap Shot, Garrote, Ambush)
+
+        // PvP: the enemy it hunts and where it last saw it; it cannot see through stealth any more than a player can.
+        ObjectGuid Quarry;
+        bool QuarrySeen = false;
+        Position LastSeen;
+        bool StealthDecided = false;    // it rolled whether to sneak up this engagement
     };
 
     /// Dress a placed bot of the assets' class and role: proficiencies, a random build of one of the role's specs,
@@ -66,7 +75,9 @@ namespace Animus::Curriculum::ScriptedPlayer
         std::vector<Unit*> const& enemies, uint32 nowMs, Position const& home, State& state, Tuning const& tuning);
 
     /// One decision of a scripted PvP opponent fighting `enemy`: a healer heals itself when hurt, a ranged spec keeps
-    /// its distance and casts, a melee spec closes in and fights; all use damage spells.
+    /// its distance and casts, a melee spec closes in and fights; all use damage spells. A rogue sneaks up in stealth
+    /// ScriptedPlayers.StealthChance percent of the time and opens from it. An enemy it can neither see nor detect it
+    /// searches for where it last saw it.
     void UpdateOpponent(Player* player, Player* enemy, uint32 nowMs, State& state, Tuning const& tuning);
 }
 

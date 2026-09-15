@@ -164,7 +164,7 @@ namespace Animus::Curriculum::Encoding
         // Same path as CMSG_CAST_SPELL. prepare() runs the full cast validation again, so a masked action
         // from a misbehaving client simply fails. The spell owns and frees itself.
         SpellCastTargets targets = TargetsFor(info, bot, target);
-        bool const stealthed = bot->HasAuraType(SPELL_AURA_MOD_STEALTH);
+        bool const stealthed = bot->HasStealthAura();
         bool const targetCasting = target && target->IsNonMeleeSpellCast(false);
         Spell* spell = new Spell(bot, info, TRIGGERED_NONE);
         if (spell->prepare(&targets) != SPELL_CAST_OK)
@@ -172,10 +172,17 @@ namespace Animus::Curriculum::Encoding
 
         ++result.SpellCasts;
 
-        // A stealth opener (Ambush, Garrote, Cheap Shot, Ravage, Pounce, ...) on the opponent.
-        if (view.L->Has(BlockId::Duel) && stealthed && info->HasAttribute(SPELL_ATTR0_ONLY_STEALTHED)
-            && info->NeedsExplicitUnitTarget() && !info->IsPositive())
-            result.StealthOpener = true;
+        // A harmful spell from stealth. One that breaks it commits to the fight (Ambush, Garrote, Cheap Shot, Pounce,
+        // an Aimed Shot out of Shadowmeld) and cannot be repeated without earning stealth back; one that keeps it (Sap,
+        // Distract, Premeditation) sets the fight up and is paid once per target per stealth, so it cannot be farmed.
+        bool const atEnemy = !info->IsPositive() || info->HasEffect(SPELL_EFFECT_DISTRACT);
+        if (view.L->Has(BlockId::Duel) && stealthed && target && target != bot && atEnemy)
+        {
+            if (info->HasAttribute(SPELL_ATTR1_ALLOW_WHILE_STEALTHED))
+                result.StealthUtilityTarget = target->GetGUID();
+            else
+                result.StealthOpener = true;
+        }
 
         // An interrupt attempt on a casting enemy; the scenario checks next decision whether the cast stopped.
         if (view.L->Has(BlockId::Pack) && targetCasting && target != bot && ActionCatalog::IsInterruptingSpell(info))

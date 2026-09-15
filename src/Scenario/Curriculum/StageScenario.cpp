@@ -57,6 +57,7 @@ namespace
     constexpr float PARTY_SPACING = 3.0f;
     constexpr float REWARD_TUNING_MS = 50.0f;       // per-decision reward terms are tuned for this decision interval
     constexpr float MAX_COMBAT_TIME_MS = 60000.0f;
+    constexpr float MAX_UNSEEN_TIME_MS = 20000.0f;
 
     /// Version of stage.json (2 adds the stage's arenas).
     constexpr uint32 STAGE_FILE_FORMAT = 2;
@@ -421,6 +422,10 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("stealth_openers", [tally](Env const& env, uint32 index)
     {
         return float(tally(env, index).StealthOpeners);
+    });
+    _info.Add("stealth_utility_casts", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).StealthUtilityCasts);
     });
     _info.Add("pet_summoned", [tally](Env const& env, uint32 index)
     {
@@ -1000,7 +1005,42 @@ Animus::Curriculum::SeatView Animus::Curriculum::StageScenario::ViewSeat(Env con
     for (Encounter* encounter : ActiveEncounters(env))
         encounter->View(env, seatIndex, view);
 
+    // What a player could not know. The critic's state keeps everything.
+    if (bot && bot->IsAlive())
+    {
+        auto const hidden = [bot](Unit const* unit) { return unit && unit != bot && !bot->CanSeeOrDetect(unit); };
+
+        if (hidden(target))
+        {
+            view.HiddenTarget = target;
+            view.Target = nullptr;
+            view.TargetSeen = seat.LastSeenGuid == target->GetGUID();
+            if (view.TargetSeen)
+            {
+                view.LastSeen = seat.LastSeen;
+                view.TargetUnseenTime = std::min(1.0f,
+                    float(env.EpisodeElapsedMs - seat.LastSeenMs) / MAX_UNSEEN_TIME_MS);
+            }
+        }
+
+        for (uint32 slot = 0; slot < view.EnemyCount; ++slot)
+            if (hidden(view.Enemies[slot]))
+                view.Enemies[slot] = nullptr;
+
+        view.OpponentHidden = hidden(view.Opponent);
+    }
+
     return view;
+}
+
+void Animus::Curriculum::StageScenario::TrackTarget(Env const& env, SeatState& seat, Player* bot, Unit* target)
+{
+    if (!bot || !target || !bot->IsAlive() || !bot->CanSeeOrDetect(target))
+        return;
+
+    seat.LastSeenGuid = target->GetGUID();
+    seat.LastSeen.Relocate(target);
+    seat.LastSeenMs = env.EpisodeElapsedMs;
 }
 
 void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatIndex, int32 action)
@@ -1017,6 +1057,7 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     for (Encounter* encounter : ActiveEncounters(env))
         encounter->BeforeSeatAction(env, seatIndex, target);
 
+    TrackTarget(env, seat, bot, target);
     SeatView view = ViewSeat(env, seatIndex, bot, target);
     SeatActionResult result;
     SeatEncoder::Apply(view, action, result);
@@ -1027,11 +1068,25 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     seat.ConsumablesUsed += result.ConsumablesUsed;
     seat.SelfResurrections += result.SelfResurrected ? 1 : 0;
 
+    CombatTally& tally = seat.Combat;
     if (result.StealthOpener)
     {
-        seat.Combat.StepStealthOpener = true;
-        ++seat.Combat.StealthOpeners;
+        tally.StepStealthOpener = true;
+        ++tally.StealthOpeners;
     }
+
+    if (!result.StealthUtilityTarget.IsEmpty()
+        && std::find(tally.StealthUtilityTargets.begin(), tally.StealthUtilityTargets.end(),
+            result.StealthUtilityTarget) == tally.StealthUtilityTargets.end())
+    {
+        tally.StealthUtilityTargets.push_back(result.StealthUtilityTarget);
+        ++tally.StepStealthUtility;
+        ++tally.StealthUtilityCasts;
+    }
+
+    // A new stealth pays for its targets again.
+    if (!bot->HasStealthAura())
+        tally.StealthUtilityTargets.clear();
 
     for (Encounter* encounter : ActiveEncounters(env))
         encounter->OnSeatAction(env, seatIndex, result);
@@ -1084,6 +1139,7 @@ void Animus::Curriculum::StageScenario::ObserveSeat(Env& env, uint32 seatIndex, 
         seat.CombatStartMs = env.EpisodeElapsedMs;
     seat.InCombat = inCombat;
 
+    TrackTarget(env, seat, bot, target);
     SeatEncoder::Observe(ViewSeat(env, seatIndex, bot, target), obs, mask);
 }
 

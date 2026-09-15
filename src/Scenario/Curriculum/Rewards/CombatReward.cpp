@@ -33,6 +33,7 @@ std::string_view Animus::Curriculum::RewardTermName(RewardTerm term)
         case RewardTerm::Casting:               return "casting";
         case RewardTerm::Approach:              return "approach";
         case RewardTerm::StealthOpener:         return "stealth_opener";
+        case RewardTerm::StealthUtility:        return "stealth_utility";
         case RewardTerm::Interrupt:             return "interrupt";
         case RewardTerm::Kill:                  return "kill";
         case RewardTerm::Clear:                 return "clear";
@@ -63,10 +64,25 @@ float Animus::Curriculum::CombatReward::DesiredRange(SeatState const& seat,
     return seat.L->Profile->Specs[seat.Spec].Range == RangeBand::Melee ? duel.MeleeRange : duel.RangedRange;
 }
 
-float Animus::Curriculum::CombatReward::TimeLeft(Env const& env)
+float Animus::Curriculum::CombatReward::TimeLeftSince(Env const& env, uint32 sinceMs)
 {
-    return env.EpisodeLengthMs
-        ? 1.0f - std::min(1.0f, float(env.EpisodeElapsedMs) / float(env.EpisodeLengthMs)) : 0.0f;
+    uint32 const spent = env.EpisodeElapsedMs > sinceMs ? env.EpisodeElapsedMs - sinceMs : 0;
+    return env.EpisodeLengthMs ? 1.0f - std::min(1.0f, float(spent) / float(env.EpisodeLengthMs)) : 0.0f;
+}
+
+void Animus::Curriculum::CombatReward::Stealth(CombatTally& tally, float opener, float utility, RewardLedger& ledger)
+{
+    if (tally.StepStealthOpener)
+    {
+        ledger.Add(RewardTerm::StealthOpener, opener);
+        tally.StepStealthOpener = false;
+    }
+
+    if (tally.StepStealthUtility)
+    {
+        ledger.Add(RewardTerm::StealthUtility, utility * float(tally.StepStealthUtility));
+        tally.StepStealthUtility = 0;
+    }
 }
 
 void Animus::Curriculum::CombatReward::Casting(Player* bot, AgentStats const& step, CombatTally& tally,
@@ -129,14 +145,16 @@ void Animus::Curriculum::CombatReward::OneOnOne(StageScenario& scenario, Env con
     Casting(bot, step, tally, scenario.Tuning().Casting, ledger);
     Approach(bot, opponent, DesiredRange(seat, tuning), tuning.Approach, tally, ledger);
 
-    if (tally.StepStealthOpener)
-    {
-        ledger.Add(RewardTerm::StealthOpener, tuning.StealthOpener);
-        tally.StepStealthOpener = false;
-    }
+    Stealth(tally, tuning.StealthOpener, tuning.StealthUtility, ledger);
 
     if (bot->GetPetGUID() || Encoding::FirstPet(bot))
         tally.PetSummoned = true;
+
+    if (!tally.Engaged && (bot->IsInCombat() || opponent->IsInCombat()))
+    {
+        tally.Engaged = true;
+        tally.EngageMs = env.EpisodeElapsedMs;
+    }
 
     if (!tally.Killed && !opponent->IsAlive())
     {
@@ -144,7 +162,8 @@ void Animus::Curriculum::CombatReward::OneOnOne(StageScenario& scenario, Env con
         tally.KillTimeMs = env.EpisodeElapsedMs;
 
         float const healthKept = 1.0f - std::min(1.0f, float(tally.DamageTaken) / botHealth);
-        ledger.Add(RewardTerm::Kill, tuning.Kill + tuning.FastKill * TimeLeft(env));
+        float const timeLeft = TimeLeftSince(env, tally.Engaged ? tally.EngageMs : env.EpisodeElapsedMs);
+        ledger.Add(RewardTerm::Kill, tuning.Kill + tuning.FastKill * timeLeft);
         ledger.Add(RewardTerm::HealthKept, tuning.HealthKept * healthKept);
     }
 

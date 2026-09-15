@@ -22,6 +22,7 @@
 #include "Block.h"
 #include "ClassRoleProfile.h"
 #include "ObjectGuid.h"
+#include "Position.h"
 #include "Supplies.h"
 #include "TalentBuilder.h"
 #include <array>
@@ -41,6 +42,12 @@ namespace Animus::Curriculum
         Player* Bot = nullptr;
         /// What the actions aim at: the opponent, the selected enemy. May be null (between pulls).
         Unit* Target = nullptr;
+        /// The target when the bot can neither see nor detect it (stealth, invisibility). Target is null then, so no
+        /// block reads what a player could not know; the duel block searches where it was last seen.
+        Unit* HiddenTarget = nullptr;
+        bool TargetSeen = false;                    // LastSeen holds where the target was when the bot last saw it
+        Position LastSeen;
+        float TargetUnseenTime = 0.0f;              // time since the bot last saw the target / 20 s, clamped
 
         // Core: the character, as built, and what happened since the last decision.
         uint8 Level = 1;
@@ -88,6 +95,7 @@ namespace Animus::Curriculum
 
         // PvP: the enemy player.
         Player* Opponent = nullptr;
+        bool OpponentHidden = false;                // the bot can neither see nor detect it
         uint8 OpponentClass = 0;
         Role OpponentRole = Role::Dps;
         bool Mirror = false;                        // the opponent is a learned agent too
@@ -101,7 +109,8 @@ namespace Animus::Curriculum
         uint32 SustainCasts = 0;
         uint32 FoodUsed = 0;
         uint32 DrinkUsed = 0;
-        bool StealthOpener = false;                 // a stealth opener at the target started
+        bool StealthOpener = false;                 // a harmful spell that breaks stealth started from stealth
+        ObjectGuid StealthUtilityTarget;            // a harmful spell that keeps stealth (Sap, Distract) aimed here
         ObjectGuid PendingInterrupt;                // an interrupt was cast at this casting enemy
         uint32 CallBeast = 0;                       // hunters: call this stable beast (the scenario creates the pet)
         uint32 ConsumablesUsed = 0;                 // potions, healthstones, bandages, soulstones

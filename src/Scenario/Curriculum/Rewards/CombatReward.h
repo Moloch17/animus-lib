@@ -54,13 +54,18 @@ namespace Animus::Curriculum
         void Approach(Player* bot, Unit* target, float desiredRange, float weight, CombatTally& tally,
             RewardLedger& ledger);
 
+        /// Harmful spells cast from stealth since the last reward: `opener` for each that broke stealth, `utility` for
+        /// each new target of one that kept it.
+        void Stealth(CombatTally& tally, float opener, float utility, RewardLedger& ledger);
+
         /// A seat's reward against one opponent (a creature or a player): damage dealt as a fraction of its health,
         /// damage taken, casting, approach, stealth openers, the kill (faster and healthier pays more), death.
         void OneOnOne(StageScenario& scenario, Env const& env, uint32 seat, Player* bot, Unit* opponent,
             RewardLedger& ledger);
 
-        /// The fraction of the episode still left.
-        [[nodiscard]] float TimeLeft(Env const& env);
+        /// The fraction of the episode length not yet spent since `sinceMs`. The fast kill and clear bonuses count
+        /// from the engagement, so the approach, stealth and preparation before it cost nothing but the discount.
+        [[nodiscard]] float TimeLeftSince(Env const& env, uint32 sinceMs);
     }
 }
 

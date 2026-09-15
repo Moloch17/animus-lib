@@ -123,7 +123,9 @@ namespace Animus::Curriculum
             uint32 PullKills = 0;               // dead enemies of the current pull
             uint32 Kills = 0;
             uint32 PullStartMs = 0;
-            bool PullCleared = false;           // decided once per decision, before the seats' rewards
+            bool PullEngaged = false;           // a creature of the current pull entered combat ...
+            uint32 PullEngageMs = 0;            // ... at this episode time: the fast clear bonuses count from here
+            bool PullCleared = false;          // decided once per decision, before the seats' rewards
             uint32 NewKills = 0;                // ... and the kills since the last decision
             uint32 PullsCleared = 0;
             uint32 QuietSinceMs = 0;            // episode time the last pull ended

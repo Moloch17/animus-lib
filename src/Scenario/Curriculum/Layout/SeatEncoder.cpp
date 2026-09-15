@@ -49,7 +49,8 @@ void Animus::Curriculum::SeatEncoder::Observe(SeatView const& view, float* obs, 
         return;
     }
 
-    if (!bot || (!view.Target && !ActsWithoutTarget(layout)))
+    // A hidden target still counts as one: the blocks see no target, and the duel block searches for it.
+    if (!bot || (!view.Target && !view.HiddenTarget && !ActsWithoutTarget(layout)))
         return;
 
     for (BlockId id : layout.Blocks)
@@ -79,7 +80,7 @@ void Animus::Curriculum::SeatEncoder::Apply(SeatView& view, int32 action, SeatAc
         return;
     }
 
-    if (!view.Target && !ActsWithoutTarget(layout))
+    if (!view.Target && !view.HiddenTarget && !ActsWithoutTarget(layout))
         return;
 
     // Every decision, whatever the action (the no-op included).

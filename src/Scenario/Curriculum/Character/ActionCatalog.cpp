@@ -384,6 +384,7 @@ bool Animus::Curriculum::ActionCatalog::IsTacticalSpell(SpellInfo const* info)
             case SPELL_EFFECT_INTERRUPT_CAST:
             case SPELL_EFFECT_KNOCK_BACK:
             case SPELL_EFFECT_ATTACK_ME:
+            case SPELL_EFFECT_DISTRACT:
                 tactical = true;
                 break;
             case SPELL_EFFECT_DISPEL:
