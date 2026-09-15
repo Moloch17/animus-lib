@@ -40,8 +40,8 @@ namespace
     constexpr float NEAR_DISTANCE = 2.0f;
     constexpr float NEAR_ANGLE = float(M_PI) / 2;
 
-    /// Where a bot joining `owner` stands: beside the owner; on the owner's spot on a transport (a deck can be
-    /// narrow); on the ground below a flight path.
+    /// Where a bot joining `owner` stands: beside the owner, or on the owner's spot on a transport (a deck can be
+    /// narrow).
     Position SpotNear(Player* owner)
     {
         if (owner->GetTransport())
@@ -51,11 +51,6 @@ namespace
         float y = 0.0f;
         float z = 0.0f;
         owner->GetClosePoint(x, y, z, owner->GetCombatReach(), NEAR_DISTANCE, NEAR_ANGLE);
-
-        if (owner->IsInFlight())
-            if (float const ground = owner->GetMapHeight(x, y, z, true, MAX_FALL_DISTANCE); ground > INVALID_HEIGHT)
-                z = ground;
-
         return Position(x, y, z, owner->GetOrientation());
     }
 
@@ -80,6 +75,47 @@ namespace
         }
 
         bot->SetPendingBind(0, 0);
+    }
+
+    /// Whether `map` takes `bot` now (not full, no raid encounter in progress), logged when not.
+    bool Admits(Map* map, Player* bot)
+    {
+        Map::EnterState const refused = map->CannotEnter(bot, false);
+        if (refused)
+            LOG_DEBUG("module.animus", "Bot {} cannot enter map {} instance {} (enter state {})", bot->GetName(),
+                map->GetId(), map->GetInstanceId(), uint32(refused));
+        return !refused;
+    }
+
+    /// Bring a bot out of the world between maps (BotFactory::Park) into `map` at `spot`. Not the worldport: a
+    /// far-teleported player stays linked to the map it left, and an instance refuses a player it still holds
+    /// (CANNOT_ENTER_ALREADY_IN_MAP), so a bot parked in its owner's instance could never return that way.
+    bool Return(Player* bot, Map* map, Position const& spot)
+    {
+        Map* left = bot->FindMap();
+        if (left != map && !Admits(map, bot))
+            return false;
+
+        // As the worldport moves a player: off the map it left (which unlinks it), onto this one. The bot is still in
+        // ObjectAccessor. If the map refuses it anyway, it stays parked, now linked to this map.
+        bot->ResetMap();
+        bot->Relocate(spot);
+        bot->SetMap(map);
+        bot->SetFallInformation(GameTime::GetGameTime().count(), spot.GetPositionZ());
+        if (!map->AddPlayerToMap(bot))
+        {
+            LOG_ERROR("module.animus", "Bot {} could not return to map {} instance {}", bot->GetName(), map->GetId(),
+                map->GetInstanceId());
+            return false;
+        }
+
+        bot->SetSemaphoreTeleportFar(0);
+        if (left && left != map)
+            left->AfterPlayerUnlinkFromMap();
+
+        // What the worldport does after adding the player: the pet dismissed by the map change comes back.
+        bot->ResummonPetTemporaryUnSummonedIfAny();
+        return true;
     }
 
     /// Player has no setter for m_social on a stock core; LoadFromDB assigns it from the login query. Explicit
@@ -213,16 +249,23 @@ bool Animus::BotFactory::PlaceInMap(Player* bot, Map* map, Position const& pos)
     return true;
 }
 
+bool Animus::BotFactory::IsAway(Player* owner)
+{
+    return owner->IsInFlight() || owner->GetVehicle();
+}
+
 bool Animus::BotFactory::CanJoin(Player* owner)
 {
-    return owner->IsInWorld() && !owner->IsBeingTeleported() && !owner->GetMap()->IsBattlegroundOrArena();
+    return owner->IsInWorld() && !owner->IsBeingTeleported() && !IsAway(owner)
+        && !owner->GetMap()->IsBattlegroundOrArena();
 }
 
 bool Animus::BotFactory::PlaceNear(Player* bot, Player* owner)
 {
     if (!CanJoin(owner))
     {
-        LOG_ERROR("module.animus", "Bot {} cannot be placed beside {} on map {} (between maps, or a battleground)",
+        LOG_ERROR("module.animus", "Bot {} cannot be placed beside {} on map {} (between maps, flying, on a vehicle "
+            "or in a battleground)",
             bot->GetName(), owner->GetName(), owner->GetMapId());
         DestroyUnplaced(bot);
         return false;
@@ -242,25 +285,29 @@ bool Animus::BotFactory::PlaceNear(Player* bot, Player* owner)
 
 bool Animus::BotFactory::TeleportNear(Player* bot, Player* owner)
 {
-    if (!CanJoin(owner) || bot->IsBeingTeleported())
+    // Out of the world between maps: parked (Park), or a teleport of its own not yet completed.
+    bool const parked = !bot->IsInWorld() && bot->IsBeingTeleportedFar();
+    if (!CanJoin(owner) || (!parked && bot->IsBeingTeleported()))
         return false;
+
+    Map* map = owner->GetMap();
+    MatchDifficulty(bot, owner);
+    Position const spot = SpotNear(owner);
+
+    if (parked)
+    {
+        if (!Return(bot, map, spot))
+            return false;
+
+        Arrived(bot, owner);
+        return true;
+    }
 
     // Another map, or another instance of the owner's map: the instance must take the bot, which is checked here
     // rather than failing in the worldport (whose fallback is a teleport to the bot's homebind).
-    Map* map = owner->GetMap();
     bool const sameMap = bot->FindMap() == map;
-    if (!sameMap)
-    {
-        if (Map::EnterState const refused = map->CannotEnter(bot, false))
-        {
-            LOG_DEBUG("module.animus", "Bot {} cannot follow {} into map {} instance {} (enter state {})",
-                bot->GetName(), owner->GetName(), map->GetId(), map->GetInstanceId(), uint32(refused));
-            return false;
-        }
-    }
-
-    MatchDifficulty(bot, owner);
-    Position const spot = SpotNear(owner);
+    if (!sameMap && !Admits(map, bot))
+        return false;
 
     // GM mode skips the map's entry requirements (level, attunement, keys, the hourly instance limit): a bot follows
     // its owner wherever the owner went. Another instance of the same map needs the far teleport too.
@@ -279,6 +326,19 @@ bool Animus::BotFactory::TeleportNear(Player* bot, Player* owner)
 
     Arrived(bot, owner);
     return true;
+}
+
+bool Animus::BotFactory::Park(Player* bot)
+{
+    if (!bot->IsInWorld() || bot->IsBeingTeleported())
+        return false;
+
+    // A far teleport to where it stands, left unacknowledged: TeleportTo does what a map change does to a player
+    // (combat, pet, spells, auras, transport) and takes it off its map; TeleportNear's far teleport replaces the
+    // destination later. The map it leaves keeps existing: the owner's open-world map, or the instance the owner is
+    // still in.
+    return bot->TeleportTo(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(),
+        bot->GetOrientation(), TELE_TO_GM_MODE, nullptr, true) && !bot->IsInWorld();
 }
 
 void Animus::BotFactory::CompleteTeleport(Player* bot)
@@ -329,6 +389,11 @@ WorldSession* Animus::BotFactory::Destroy(Player* bot, bool keepSession)
     // A bot in the middle of a far teleport is on no map.
     Map* map = bot->FindMap();
     Difficulty const difficulty = map ? map->GetDifficulty() : REGULAR_DIFFICULTY;
+
+    // A parked bot comes back where it left first: logging out would complete its far teleport through the worldport,
+    // which its own instance refuses (it still holds the bot), sending it to its homebind on the way out.
+    if (!bot->IsInWorld() && bot->IsBeingTeleportedFar() && bot->FindMap())
+        Return(bot, bot->FindMap(), bot->GetPosition());
 
     // Off its transport first: the transport keeps a pointer to every passenger.
     if (Transport* transport = bot->GetTransport())

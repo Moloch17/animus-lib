@@ -77,21 +77,30 @@ namespace Animus::BotFactory
     /// Put a Create()d bot into an existing map at `pos`. Returns false on failure.
     bool PlaceInMap(Player* bot, Map* map, Position const& pos);
 
-    /// Whether a bot can be put beside `owner` now: the owner is in the world, not between maps, and not in a
-    /// battleground or arena (those only take the players the battleground system queued).
+    /// Whether `owner` rides something no bot can ride with it: a flight path (a taxi, or a scripted quest flight) or a
+    /// vehicle (a quest's bombing run, a siege engine, a seat on someone else's mount). Boats, zeppelins and elevators
+    /// are transports, not this.
+    [[nodiscard]] bool IsAway(Player* owner);
+
+    /// Whether a bot can be put beside `owner` now: the owner is in the world, not between maps, not away (IsAway),
+    /// and not in a battleground or arena (those only take the players the battleground system queued).
     [[nodiscard]] bool CanJoin(Player* owner);
 
     /// Put a Create()d bot into the world beside `owner`: on the owner's map (open world, dungeon or raid instance)
-    /// and phase, with the owner's dungeon and raid difficulty, on the owner's transport if it rides one, and on the
-    /// ground below the owner if it is on a flight path. On failure (CanJoin, the map refusing the bot) the bot is
-    /// discarded (DestroyUnplaced) and false returned.
+    /// and phase, with the owner's dungeon and raid difficulty, and on the owner's transport if it rides one. On failure
+    /// (CanJoin, the map refusing the bot) the bot is discarded (DestroyUnplaced) and false returned.
     bool PlaceNear(Player* bot, Player* owner);
 
-    /// Teleport a placed bot beside `owner` as PlaceNear places it, into the owner's instance too, and complete the
-    /// teleport as the client's acknowledgement would (see CompleteTeleport). The bot does not need to meet the
-    /// map's entry requirements (level, attunement, keys); false if CanJoin fails, the owner's instance refuses it
-    /// (full, an encounter in progress) or the teleport fails.
+    /// Teleport a placed or parked (Park) bot beside `owner` as PlaceNear places it, into the owner's instance too,
+    /// and complete the teleport as the client's acknowledgement would (see CompleteTeleport). The bot does not need to
+    /// meet the map's entry requirements (level, attunement, keys); false if CanJoin fails, the owner's instance
+    /// refuses it (full, an encounter in progress) or the teleport fails.
     bool TeleportNear(Player* bot, Player* owner);
+
+    /// Take a placed bot out of the world without destroying it, as a far teleport whose loading screen never ends:
+    /// it leaves combat, its transport and its map, and its pet is dismissed until it returns. Bring it back with
+    /// TeleportNear (into the owner's exact map and instance), and never CompleteTeleport a parked bot. Destroy still works on it. False if it is not in the world.
+    bool Park(Player* bot);
 
     /// Finish a teleport a bot started without TeleportNear (a transport changing maps, a summoning spell, a
     /// scripted teleport) as the bot's client would acknowledge it: the worldport for another map, MSG_MOVE_TELEPORT_ACK
