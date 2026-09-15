@@ -43,6 +43,7 @@ std::string_view Animus::Curriculum::BlockName(BlockId id)
         case BlockId::Pvp:       return "pvp";
         case BlockId::Context:   return "context";
         case BlockId::Hostiles:  return "hostiles";
+        case BlockId::Pet:       return "pet";
         case BlockId::Count:     break;
     }
 

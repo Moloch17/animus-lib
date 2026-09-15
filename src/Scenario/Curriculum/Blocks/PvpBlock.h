@@ -50,8 +50,17 @@ namespace Animus::Curriculum
                                                 // Forsaken) cooldown left, as a fraction; 0 without one
             OBS_OPPONENT_MAJOR_CDS      = 26,   // its spells with a cooldown of a minute or more now cooling down / 4
             OBS_OPPONENT_HIDDEN         = 27,   // the bot can neither see nor detect it: only the above is written
-            OBS_COUNT                   = 28
+            // Diminishing returns (each of DR_GROUPS: level / 3, 1 = immune), on the opponent (known even hidden, as a
+            // player tracks them) and on the bot, and what is left of the crowd control each is under now.
+            OBS_OPPONENT_DR_FIRST       = 28,
+            OBS_BOT_DR_FIRST            = 36,
+            OBS_OPPONENT_CC_LEFT        = 44,   // seconds of crowd control left / 8
+            OBS_BOT_CC_LEFT             = 45,
+            OBS_COUNT                   = 46
         };
+
+        /// The diminishing return categories a player plays around, in feature order.
+        static constexpr uint32 DR_GROUP_COUNT = 8;
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Pvp; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;

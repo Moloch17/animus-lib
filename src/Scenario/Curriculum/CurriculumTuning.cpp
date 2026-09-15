@@ -80,6 +80,7 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     ClampPercent(prefix, "Pulls.PartyEliteChance", tuning.Pulls.PartyEliteChance);
     ClampPercent(prefix, "Pulls.OwnerPullsChance", tuning.Pulls.OwnerPullsChance);
     ClampPercent(prefix, "ScriptedPlayers.StealthChance", tuning.ScriptedPlayers.StealthChance);
+    ClampPercent(prefix, "ScriptedPlayers.TacticsChance", tuning.ScriptedPlayers.TacticsChance);
     ClampRolePair(prefix, "Owner.TankChance", tuning.Owner.TankChance, "Owner.HealerChance", tuning.Owner.HealerChance);
     ClampRolePair(prefix, "Opponent.TankChance", tuning.Opponent.TankChance, "Opponent.HealerChance",
         tuning.Opponent.HealerChance);
@@ -95,6 +96,7 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     order(tuning.ScriptedPlayers.SpellMinMs, tuning.ScriptedPlayers.SpellMaxMs);
     order(tuning.ScriptedPlayers.HealMinMs, tuning.ScriptedPlayers.HealMaxMs);
     order(tuning.ScriptedPlayers.WanderMinMs, tuning.ScriptedPlayers.WanderMaxMs);
+    order(tuning.ScriptedPlayers.ControlMinMs, tuning.ScriptedPlayers.ControlMaxMs);
 
     tuning.Party.SizeWeight1 = std::max(0, tuning.Party.SizeWeight1);
     tuning.Party.SizeWeight2 = std::max(0, tuning.Party.SizeWeight2);

@@ -24,8 +24,11 @@
 #include "SpellChecks.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "SpellAuraEffects.h"
+#include "SpellAuras.h"
 #include "Timer.h"
 #include <algorithm>
+#include <array>
 
 namespace
 {
@@ -36,6 +39,35 @@ namespace
     };
 
     constexpr uint32 MAJOR_COOLDOWN_MS = 60000;
+    constexpr float CC_LEFT_SCALE_MS = 8000.0f;
+
+    constexpr std::array<DiminishingGroup, Animus::Curriculum::PvpBlock::DR_GROUP_COUNT> DR_GROUPS = {
+        DIMINISHING_CONTROLLED_STUN, DIMINISHING_OPENING_STUN, DIMINISHING_FEAR, DIMINISHING_DISORIENT,
+        DIMINISHING_CONTROLLED_ROOT, DIMINISHING_SILENCE, DIMINISHING_HORROR, DIMINISHING_CYCLONE,
+    };
+
+    constexpr std::array<AuraType, 8> CONTROL_AURAS = {
+        SPELL_AURA_MOD_STUN, SPELL_AURA_MOD_FEAR, SPELL_AURA_MOD_CONFUSE, SPELL_AURA_MOD_ROOT,
+        SPELL_AURA_MOD_SILENCE, SPELL_AURA_MOD_PACIFY_SILENCE, SPELL_AURA_TRANSFORM, SPELL_AURA_MOD_PACIFY,
+    };
+
+    void WriteDiminishing(Unit* unit, float* out)
+    {
+        for (std::size_t i = 0; i < DR_GROUPS.size(); ++i)
+            out[i] = std::min(1.0f, float(unit->GetDiminishing(DR_GROUPS[i])) / float(DIMINISHING_LEVEL_IMMUNE));
+    }
+
+    /// The longest crowd control on `unit` still running, / CC_LEFT_SCALE_MS.
+    float ControlLeft(Unit const* unit)
+    {
+        int32 left = 0;
+        for (AuraType type : CONTROL_AURAS)
+            for (AuraEffect const* effect : unit->GetAuraEffectsByType(type))
+                if (!effect->GetBase()->IsPassive() && !effect->GetSpellInfo()->IsPositive())
+                    left = std::max(left, effect->GetBase()->GetDuration());
+
+        return std::min(1.0f, float(left) / CC_LEFT_SCALE_MS);
+    }
 }
 
 Animus::Curriculum::BlockSize Animus::Curriculum::PvpBlock::Size(Layout const& /*layout*/) const
@@ -52,10 +84,14 @@ void Animus::Curriculum::PvpBlock::Observe(SeatView const& view, float* obs, uin
     obs[OBS_BOT_SILENCED] = bot->HasAuraType(SPELL_AURA_MOD_SILENCE) || bot->HasAuraType(SPELL_AURA_MOD_PACIFY_SILENCE)
         ? 1.0f : 0.0f;
     obs[OBS_MIRROR] = view.Mirror ? 1.0f : 0.0f;
+    WriteDiminishing(bot, obs + OBS_BOT_DR_FIRST);
+    obs[OBS_BOT_CC_LEFT] = ControlLeft(bot);
 
     Player* opponent = view.Opponent;
     if (!opponent)
         return;
+
+    WriteDiminishing(opponent, obs + OBS_OPPONENT_DR_FIRST);
 
     WriteOneHot(PLAYABLE_CLASSES, view.OpponentClass, obs + OBS_OPPONENT_CLASS_FIRST);
     obs[OBS_OPPONENT_ROLE_FIRST + uint32(view.OpponentRole)] = 1.0f;
@@ -94,6 +130,7 @@ void Animus::Curriculum::PvpBlock::Observe(SeatView const& view, float* obs, uin
             obs[OBS_OPPONENT_RAGE_ENERGY] = float(opponent->GetPower(power)) / float(maxPower);
 
     obs[OBS_OPPONENT_CONTROLLED] = Encoding::IsCrowdControlled(opponent) ? 1.0f : 0.0f;
+    obs[OBS_OPPONENT_CC_LEFT] = ControlLeft(opponent);
     obs[OBS_OPPONENT_STEALTHED] = opponent->HasAuraType(SPELL_AURA_MOD_STEALTH) ? 1.0f : 0.0f;
     obs[OBS_OPPONENT_PET_OUT] = opponent->GetPetGUID() || !opponent->m_Controlled.empty() ? 1.0f : 0.0f;
 

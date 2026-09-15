@@ -188,6 +188,11 @@ namespace Animus::Curriculum
             float RangedMin = 20.0f;            // PvP: a ranged spec backs off inside half this ...
             float RangedMax = 30.0f;            // ... and closes in beyond this
             int32 StealthChance = 50;           // PvP: percent of engagements a rogue sneaks up in stealth
+            int32 TacticsChance = 75;           // PvP: percent of engagements it plays its kit (below)
+            uint32 ControlMinMs = 8000;         // ... time between crowd control attempts
+            uint32 ControlMaxMs = 15000;
+            float DefensiveBelow = 0.35f;       // ... a defensive when its health is under this
+            float BreakBelow = 0.6f;            // ... breaks crowd control when its health is under this
         } ScriptedPlayers;
 
         /// Calls f(key, value) for every value, key relative to the tuning prefix (AnimusForge.Curriculum., ...).
@@ -302,6 +307,11 @@ namespace Animus::Curriculum
             f("ScriptedPlayers.RangedMin", tuning.ScriptedPlayers.RangedMin);
             f("ScriptedPlayers.RangedMax", tuning.ScriptedPlayers.RangedMax);
             f("ScriptedPlayers.StealthChance", tuning.ScriptedPlayers.StealthChance);
+            f("ScriptedPlayers.TacticsChance", tuning.ScriptedPlayers.TacticsChance);
+            f("ScriptedPlayers.ControlMinMs", tuning.ScriptedPlayers.ControlMinMs);
+            f("ScriptedPlayers.ControlMaxMs", tuning.ScriptedPlayers.ControlMaxMs);
+            f("ScriptedPlayers.DefensiveBelow", tuning.ScriptedPlayers.DefensiveBelow);
+            f("ScriptedPlayers.BreakBelow", tuning.ScriptedPlayers.BreakBelow);
         }
 
         /// The values of the config keys <prefix><key>, each defaulting to the value above; min/max pairs are

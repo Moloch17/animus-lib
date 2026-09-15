@@ -52,7 +52,7 @@ namespace
             .Suffix = "_duel",
             .Extends = "",
             .Summary = "a same-level creature out of aggro range: close in and kill it fast, taking little damage",
-            .Blocks = { Core, Duel },
+            .Blocks = { Core, Duel, Pet },
             .Arenas = { { .Name = "duel", .Against = Opposition::Creature } },
         });
 
@@ -61,7 +61,7 @@ namespace
             .Suffix = "_pack",
             .Extends = "stage1_duel",
             .Summary = "a pack of 2-4, casters included, usually linked: targets, interrupts, crowd control",
-            .Blocks = { Core, Duel, Pack },
+            .Blocks = { Core, Duel, Pet, Pack },
             .Arenas = { { .Name = "pack", .Against = Opposition::Pulls, .Schedule = PullSchedule::SinglePack } },
         });
 
@@ -70,7 +70,7 @@ namespace
             .Suffix = "_gauntlet",
             .Extends = "stage2_pack",
             .Summary = "pull after pull with short breaks: heals, food and drink",
-            .Blocks = { Core, Duel, Pack, Gauntlet },
+            .Blocks = { Core, Duel, Pet, Pack, Gauntlet },
             .Arenas = { { .Name = "gauntlet", .Against = Opposition::Pulls, .Schedule = PullSchedule::Gauntlet } },
         });
 
@@ -79,7 +79,7 @@ namespace
             .Suffix = "_companion",
             .Extends = "stage3_gauntlet",
             .Summary = "the gauntlet beside a scripted owner: follow, assist, guard and heal it",
-            .Blocks = { Core, Duel, Pack, Gauntlet, Companion },
+            .Blocks = { Core, Duel, Pet, Pack, Gauntlet, Companion },
             .Arenas = { { .Name = "companion", .Against = Opposition::Pulls, .Schedule = PullSchedule::Gauntlet,
                 .Owner = true } },
         });
@@ -89,7 +89,7 @@ namespace
             .Suffix = "_party",
             .Extends = "stage4_companion",
             .Summary = "four learned seats and the scripted owner against elite-heavy pulls",
-            .Blocks = { Core, Duel, Pack, Gauntlet, Companion, Party },
+            .Blocks = { Core, Duel, Pet, Pack, Gauntlet, Companion, Party },
             .Arenas = { { .Name = "party", .Seats = SeatPlan::Party, .Against = Opposition::Pulls,
                 .Schedule = PullSchedule::Gauntlet, .Owner = true, .PartyGroup = true } },
         });
@@ -100,7 +100,7 @@ namespace
             .Suffix = "_pvp",
             .Extends = "stage1_duel",
             .Summary = "one-on-one against a scripted enemy player",
-            .Blocks = { Core, Duel, Pvp },
+            .Blocks = { Core, Duel, Pet, Pvp },
             .Arenas = { { .Name = "pvp_scripted", .Against = Opposition::ScriptedPlayer, .Pvp = true } },
         });
 
@@ -109,7 +109,7 @@ namespace
             .Suffix = "_arena",
             .Extends = "stage6_pvp",
             .Summary = "self-play one-on-one: two learned seats of any classes",
-            .Blocks = { Core, Duel, Pvp },
+            .Blocks = { Core, Duel, Pet, Pvp },
             .Arenas = { { .Name = "arena_1v1", .Seats = SeatPlan::Mirror, .Against = Opposition::MirrorSeat,
                 .Pvp = true } },
         });
@@ -126,7 +126,7 @@ namespace
                 "stage7_arena", "stage6_pvp", "stage4_companion", "stage3_gauntlet", "stage1_duel",
             },
             .Summary = "PvE and PvP in one policy: every earlier situation, an ambush mid-gauntlet and a ganked owner",
-            .Blocks = { Core, Duel, Pack, Gauntlet, Companion, Party, Pvp, Context, Hostiles },
+            .Blocks = { Core, Duel, Pet, Pack, Gauntlet, Companion, Party, Pvp, Context, Hostiles },
             .Arenas = {
                 { .Name = "companion", .Weight = 20, .Against = Opposition::Pulls, .Schedule = PullSchedule::Gauntlet,
                     .Owner = true, .EpisodeSeconds = 300 },
@@ -155,7 +155,7 @@ namespace
             .Extends = "stage6_pvp",
             .Merges = { "stage1_duel" },
             .Summary = "pilot arena mix: half the episodes a creature duel, half a scripted enemy player",
-            .Blocks = { Core, Duel, Pvp },
+            .Blocks = { Core, Duel, Pet, Pvp },
             .Arenas = {
                 { .Name = "duel", .Against = Opposition::Creature },
                 { .Name = "pvp_scripted", .Against = Opposition::ScriptedPlayer, .Pvp = true },

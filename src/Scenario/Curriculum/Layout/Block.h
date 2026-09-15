@@ -50,6 +50,7 @@ namespace Animus::Curriculum
         Pvp,            // the enemy player's class, role and state
         Context,        // the situation: allies, hostile players and creatures, PvP flag, map kind (no actions)
         Hostiles,       // per enemy slot: player or creature, class, healing, stealth, pet (no actions)
+        Pet,            // the pet bar: abilities, stance, follow and stay (classes with a controllable pet)
         Count
     };
 

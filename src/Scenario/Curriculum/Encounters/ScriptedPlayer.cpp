@@ -18,6 +18,7 @@
 
 #include "ScriptedPlayer.h"
 #include "Creature.h"
+#include "EncoderSupport.h"
 #include "MotionMaster.h"
 #include "MoveSpline.h"
 #include "ObjectMgr.h"
@@ -75,6 +76,44 @@ namespace
             && info->NeedsExplicitUnitTarget() && !info->HasAttribute(SPELL_ATTR1_ALLOW_WHILE_STEALTHED);
     }
 
+    /// Breaks or ends crowd control on itself: Every Man for Himself, Will of the Forsaken, Berserker Rage.
+    bool IsBreak(SpellInfo const* info)
+    {
+        return info && !info->IsPassive() && info->IsPositive() && info->HasAura(SPELL_AURA_MECHANIC_IMMUNITY)
+            && !info->NeedsExplicitUnitTarget();
+    }
+
+    /// A cooldown that keeps it alive: an immunity, or less damage taken, or avoiding it.
+    bool IsDefensive(SpellInfo const* info)
+    {
+        if (!info || info->IsPassive() || !info->IsPositive())
+            return false;
+
+        for (SpellEffectInfo const& effect : info->GetEffects())
+        {
+            if (effect.Effect != SPELL_EFFECT_APPLY_AURA)
+                continue;
+
+            switch (effect.ApplyAuraName)
+            {
+                case SPELL_AURA_SCHOOL_IMMUNITY:
+                case SPELL_AURA_MOD_DODGE_PERCENT:
+                case SPELL_AURA_MOD_PARRY_PERCENT:
+                case SPELL_AURA_DEFLECT_SPELLS:
+                case SPELL_AURA_REFLECT_SPELLS:
+                    return true;
+                case SPELL_AURA_MOD_DAMAGE_PERCENT_TAKEN:
+                    if (effect.CalcValue() < 0)
+                        return true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return false;
+    }
+
     bool IsTaunt(SpellInfo const* info)
     {
         if (!info || info->IsPassive() || !info->NeedsExplicitUnitTarget())
@@ -99,6 +138,16 @@ namespace
         targets.SetUnitTarget(target);
         Spell* spell = new Spell(caster, info, TRIGGERED_NONE);
         return spell->prepare(&targets) == SPELL_CAST_OK;
+    }
+
+    /// The first of `spells` it casts at `target`.
+    bool TryAny(Player* caster, std::vector<uint32> const& spells, Unit* target)
+    {
+        for (uint32 spellId : spells)
+            if (TryCast(caster, spellId, target))
+                return true;
+
+        return false;
     }
 
     /// A random spell of `spells` at `target`, if the spell timer allows. A cast restarts the timer; a failed one
@@ -340,6 +389,16 @@ void Animus::Curriculum::ScriptedPlayer::Configure(Player* player, ClassRoleAsse
             state.Stealths.push_back(spellId);
         else if (IsOpener(info))
             state.Openers.push_back(spellId);
+        else if (IsBreak(info))
+            state.Breaks.push_back(spellId);
+        else if (IsDefensive(info))
+            state.Defensives.push_back(spellId);
+        else if (info && !info->IsPassive() && !info->IsPositive() && info->NeedsExplicitUnitTarget()
+            && ActionCatalog::IsInterruptingSpell(info))
+            state.Interrupts.push_back(spellId);
+        else if (info && !info->IsPassive() && !info->IsPositive() && info->NeedsExplicitUnitTarget()
+            && ActionCatalog::IsTacticalSpell(info))
+            state.Controls.push_back(spellId);
         else if (ActionCatalog::IsCombatSpell(info) && !info->IsPositive() && info->NeedsExplicitUnitTarget()
             && !info->IsAutoRepeatRangedSpell())
             state.Spells.push_back(spellId);
@@ -421,16 +480,46 @@ void Animus::Curriculum::ScriptedPlayer::UpdateOpponent(Player* player, Player* 
     if (!state.StealthDecided)
     {
         state.StealthDecided = true;
+        state.Tactics = roll_chance_i(tuning.TacticsChance);
+        state.NextControlMs = nowMs + urand(0, tuning.ControlMinMs);
         if (!state.Stealths.empty() && !player->IsInCombat() && roll_chance_i(tuning.StealthChance))
-            for (uint32 stealth : state.Stealths)
-                if (TryCast(player, stealth, player))
-                    break;
+            TryAny(player, state.Stealths, player);
     }
+
+    // Survive first: break crowd control, then a defensive when low.
+    float const health = player->GetHealthPct() / 100.0f;
+    if (state.Tactics && health < tuning.BreakBelow && Encoding::IsCrowdControlled(player)
+        && TryAny(player, state.Breaks, player))
+        return;
+    if (state.Tactics && health < tuning.DefensiveBelow && TryAny(player, state.Defensives, player))
+        return;
 
     if (!visible)
     {
         Search(player, nowMs, state);
         return;
+    }
+
+    if (state.Tactics)
+    {
+        // Stop a cast, then crowd control now and then (not an enemy already under it).
+        if (enemy->IsNonMeleeSpellCast(false) && TryAny(player, state.Interrupts, enemy))
+            return;
+
+        if (nowMs >= state.NextControlMs && !Encoding::IsCrowdControlled(enemy) && !state.Controls.empty())
+        {
+            uint32 const control = state.Controls[urand(0, uint32(state.Controls.size()) - 1)];
+            bool const controlled = TryCast(player, control, enemy);
+            state.NextControlMs = nowMs
+                + (controlled ? urand(tuning.ControlMinMs, tuning.ControlMaxMs) : CAST_RETRY_MS);
+            if (controlled)
+                return;
+        }
+
+        // A caster with an enemy on top of it slows or roots it before backing off.
+        if (state.Ranged && player->GetDistance(enemy) < tuning.RangedMin * 0.5f
+            && TryAny(player, state.Controls, enemy))
+            return;
     }
 
     if (!state.Ranged)
