@@ -433,11 +433,21 @@ void Animus::Curriculum::PullsEncounter::BeforeRewards(Env& env)
 {
     EnvPulls& pulls = _envs[env.Index];
 
+    // A pull's creatures only leave the map by dying: a corpse that decayed during a long pull (Corpse.Decay.* game
+    // seconds) is still a kill, or the kills after it would go uncounted.
     uint32 alive = 0;
     uint32 dead = 0;
-    for (uint32 slot = 0; slot < env.Targets.size(); ++slot)
-        if (Unit* enemy = env.FindTarget(slot))
-            ++(enemy->IsAlive() ? alive : dead);
+    if (env.FindMap())
+    {
+        for (uint32 slot = 0; slot < env.Targets.size(); ++slot)
+        {
+            if (env.Targets[slot].IsPlayer())
+                continue;
+
+            Creature* enemy = env.FindTarget(slot);
+            ++(enemy && enemy->IsAlive() ? alive : dead);
+        }
+    }
 
     pulls.NewKills = dead > pulls.PullKills ? dead - pulls.PullKills : 0;
     pulls.Kills += pulls.NewKills;

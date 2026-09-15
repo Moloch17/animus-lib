@@ -107,8 +107,10 @@ bool Animus::Curriculum::AmbushEncounter::Arrive(Env& env, Map* map)
     uint32 const envIndex = env.Id;
     uint32 created = 0;
 
-    for (uint32 index = 0; index < ambush.Count; ++index)
+    // The ambushers made take the first slots, so Find(0..Count-1) reaches every one of them even when one failed.
+    for (uint32 attempt = 0; attempt < ambush.Count; ++attempt)
     {
+        uint32 const index = created;
         Ambusher& ambusher = ambush.Ambushers[index];
         uint8 const level = uint8(std::clamp<int32>(int32(data.Seats[0].Level)
             + irand(-opponents.LevelSpread, opponents.LevelSpread), 1, DEFAULT_MAX_LEVEL));
