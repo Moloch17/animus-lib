@@ -48,10 +48,14 @@ void Animus::Curriculum::OpponentEncounter::AddEpisodeInfo(EpisodeInfoTable& tab
         return _scenario.Uses(env, *this) && tally.Killed && !tally.Died ? 1.0f : 0.0f;
     });
 
+    // Every seat of the stage has a row: in a stage that also has party arenas, seats 2 and 3 of a mirror episode are
+    // empty and have no other side.
     table.Add("opponent_class", [this](Env const& env, uint32 seat)
     {
         if (!Mirror(env))
             return float(_envs[env.Index].Class);
+        if (seat > 1)
+            return 0.0f;
         SeatState const& other = _scenario.Data(env).Seats[1 - seat];
         return other.L ? float(other.L->Profile->Class) : 0.0f;
     });
@@ -60,6 +64,8 @@ void Animus::Curriculum::OpponentEncounter::AddEpisodeInfo(EpisodeInfoTable& tab
     {
         if (!Mirror(env))
             return float(uint32(_envs[env.Index].PlayRole));
+        if (seat > 1)
+            return 0.0f;
         SeatState const& other = _scenario.Data(env).Seats[1 - seat];
         return other.L ? float(uint32(other.L->PlayRole())) : 0.0f;
     });
