@@ -20,6 +20,7 @@
 #include "DBCStores.h"
 #include "EncoderSupport.h"
 #include "Layout.h"
+#include "Map.h"
 #include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
 #include "MotionMaster.h"
@@ -111,6 +112,8 @@ namespace
                 return canMove;
             case DuelBlock::ACTION_STOP:
                 return !bot->movespline->Finalized();
+            case DuelBlock::ACTION_BREAK_LINE_OF_SIGHT:
+                return canMove && bot->IsWithinLOSInMap(target);
             case DuelBlock::ACTION_START_ATTACK:
                 return bot->GetVictim() != target && bot->IsValidAttackTarget(target);
             case DuelBlock::ACTION_PET_ATTACK:
@@ -129,6 +132,44 @@ namespace
         SpellInfo const* callPet = sSpellMgr->GetSpellInfo(SPELL_CALL_PET);
         return !callPet || !bot->GetGlobalCooldownMgr().HasGlobalCooldown(callPet);
     }
+}
+
+bool Animus::Curriculum::DuelBlock::FindCover(Player* bot, Unit* target, Position& cover)
+{
+    Map const* map = bot->FindMap();
+    if (!map || !target)
+        return false;
+
+    // Eye height: what the target sees over, and what the bot hides behind.
+    constexpr float EYE = 2.0f;
+    constexpr float MAX_STEP = 6.0f;
+
+    // Nearest ring first; on a ring, the bearings pointing away from the target first.
+    float const away = target->GetAngle(bot);
+    for (float distance : COVER_DISTANCES)
+    {
+        for (uint32 step = 0; step < COVER_BEARINGS; ++step)
+        {
+            // 0, +1, -1, +2, -2, ... bearings from straight away.
+            int32 const offset = int32((step + 1) / 2) * (step % 2 ? 1 : -1);
+            float const angle = away + float(offset) * 2.0f * float(M_PI) / float(COVER_BEARINGS);
+            float const x = bot->GetPositionX() + distance * std::cos(angle);
+            float const y = bot->GetPositionY() + distance * std::sin(angle);
+            float const z = map->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + MAX_STEP, true,
+                MAX_STEP * 2.0f);
+            if (z <= INVALID_HEIGHT || std::fabs(z - bot->GetPositionZ()) > MAX_STEP)
+                continue;
+
+            if (map->isInLineOfSight(target->GetPositionX(), target->GetPositionY(), target->GetPositionZ() + EYE,
+                x, y, z + EYE, bot->GetPhaseMask(), LINEOFSIGHT_ALL_CHECKS, VMAP::ModelIgnoreFlags::Nothing))
+                continue;
+
+            cover.Relocate(x, y, z);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 Animus::Curriculum::BlockSize Animus::Curriculum::DuelBlock::Size(Layout const& layout) const
@@ -237,6 +278,7 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
         obs[OBS_TARGET_IN_COMBAT] = target->IsInCombat() ? 1.0f : 0.0f;
         obs[OBS_TARGET_ATTACKS_BOT] = target->GetVictim() == bot ? 1.0f : 0.0f;
         obs[OBS_TARGET_CASTING] = target->IsNonMeleeSpellCast(false) ? 1.0f : 0.0f;
+        obs[OBS_TARGET_IN_LINE_OF_SIGHT] = bot->IsWithinLOSInMap(target) ? 1.0f : 0.0f;
         obs[OBS_BOT_MOVING] = bot->movespline->Finalized() ? 0.0f : 1.0f;
         obs[OBS_BOT_IN_COMBAT] = bot->IsInCombat() ? 1.0f : 0.0f;
         obs[OBS_BOT_STEALTHED] = bot->HasAuraType(SPELL_AURA_MOD_STEALTH) ? 1.0f : 0.0f;
@@ -355,6 +397,16 @@ void Animus::Curriculum::DuelBlock::Apply(SeatView& view, uint32 local, SeatActi
             bot->GetMotionMaster()->Clear();
             bot->StopMoving();
             return;
+        case ACTION_BREAK_LINE_OF_SIGHT:
+        {
+            Position cover;
+            if (!FindCover(bot, target, cover))
+                return;
+            x = cover.GetPositionX();
+            y = cover.GetPositionY();
+            z = cover.GetPositionZ();
+            break;
+        }
         case ACTION_START_ATTACK:
             bot->Attack(target, true);
             return;

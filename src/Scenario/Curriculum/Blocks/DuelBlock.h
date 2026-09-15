@@ -20,6 +20,11 @@
 #define ANIMUS_LIB_CURRICULUM_DUEL_BLOCK_H
 
 #include "Block.h"
+#include "Position.h"
+#include <array>
+
+class Player;
+class Unit;
 
 namespace Animus::Curriculum
 {
@@ -68,8 +73,9 @@ namespace Animus::Curriculum
             OBS_LAST_SEEN_DISTANCE      = 32,   // yards to where it was last seen / 60
             OBS_LAST_SEEN_BEARING_SIN   = 33,   // direction to that place relative to the bot's facing
             OBS_LAST_SEEN_BEARING_COS   = 34,
-            OBS_STABLE_FIRST            = 35,   // hunters: per stable slot STABLE_FEATURES
-            OBS_COUNT_WITHOUT_STABLE    = 35
+            OBS_TARGET_IN_LINE_OF_SIGHT = 35,   // nothing in the way: casts can reach it, and it can reach the bot
+            OBS_STABLE_FIRST            = 36,   // hunters: per stable slot STABLE_FEATURES
+            OBS_COUNT_WITHOUT_STABLE    = 36
         };
 
         /// Per stabled beast: offered, family / 50, ferocity, tenacity, cunning.
@@ -93,12 +99,20 @@ namespace Animus::Curriculum
             ACTION_BANDAGE              = 12,   // bandage itself (a channel, broken by damage)
             ACTION_SOULSTONE_SELF       = 13,   // warlocks: soulstone itself
             ACTION_SELF_RESURRECT       = 14,   // dead: use its Soulstone or Reincarnation (not in the PvP stages)
-            ACTION_CALL_BEAST_FIRST     = 15,   // hunters: call stable slot 0..STABLE_SLOTS-1
-            ACTION_COUNT_WITHOUT_STABLE = 15
+            ACTION_BREAK_LINE_OF_SIGHT  = 15,   // run to the nearest place the target cannot see (a pillar, a hill)
+            ACTION_CALL_BEAST_FIRST     = 16,   // hunters: call stable slot 0..STABLE_SLOTS-1
+            ACTION_COUNT_WITHOUT_STABLE = 16
         };
 
         static constexpr float MOVE_TO_RANGE_DISTANCE = 24.0f;
         static constexpr float BACK_OFF_DISTANCE = 10.0f;
+
+        /// Cover: where the bot looks for a place out of its target's sight.
+        static constexpr std::array<float, 3> COVER_DISTANCES = { 8.0f, 16.0f, 26.0f };
+        static constexpr uint32 COVER_BEARINGS = 12;
+
+        /// The nearest place around the bot, on walkable ground, its target cannot see; false if there is none.
+        [[nodiscard]] static bool FindCover(Player* bot, Unit* target, Position& cover);
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Duel; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;

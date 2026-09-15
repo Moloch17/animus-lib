@@ -54,6 +54,7 @@ namespace Animus::Curriculum
             SLOT_CURRENT_TARGET         = 12,
             SLOT_ELITE                  = 13,
             SLOT_LEVEL_DIFFERENCE       = 14,   // (its level - the bot's) / 5
+            SLOT_IN_LINE_OF_SIGHT       = 15,   // the bot can see it past the terrain and buildings
             SLOT_FEATURES
         };
 
