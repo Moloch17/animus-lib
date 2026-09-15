@@ -30,6 +30,7 @@
 #include "Pet.h"
 #include "Player.h"
 #include "SocialMgr.h"
+#include "Transport.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
@@ -38,6 +39,48 @@ namespace
     /// Distance from the owner a companion appears at, and the angle relative to the owner's facing.
     constexpr float NEAR_DISTANCE = 2.0f;
     constexpr float NEAR_ANGLE = float(M_PI) / 2;
+
+    /// Where a bot joining `owner` stands: beside the owner; on the owner's spot on a transport (a deck can be
+    /// narrow); on the ground below a flight path.
+    Position SpotNear(Player* owner)
+    {
+        if (owner->GetTransport())
+            return owner->GetPosition();
+
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        owner->GetClosePoint(x, y, z, owner->GetCombatReach(), NEAR_DISTANCE, NEAR_ANGLE);
+
+        if (owner->IsInFlight())
+            if (float const ground = owner->GetMapHeight(x, y, z, true, MAX_FALL_DISTANCE); ground > INVALID_HEIGHT)
+                z = ground;
+
+        return Position(x, y, z, owner->GetOrientation());
+    }
+
+    /// The owner's difficulties: the instance a grouped bot enters is chosen with them.
+    void MatchDifficulty(Player* bot, Player* owner)
+    {
+        bot->SetDungeonDifficulty(owner->GetDungeonDifficulty());
+        bot->SetRaidDifficulty(owner->GetRaidDifficulty());
+    }
+
+    /// A bot is beside its owner: on the owner's transport if it rides one (as a client moving onto the deck), off
+    /// any other, and never waiting on an instance lock it cannot answer.
+    void Arrived(Player* bot, Player* owner)
+    {
+        Transport* transport = owner->GetTransport();
+        if (bot->GetTransport() != transport)
+        {
+            if (Transport* old = bot->GetTransport())
+                old->RemovePassenger(bot, true);
+            if (transport)
+                transport->AddPassenger(bot, true);
+        }
+
+        bot->SetPendingBind(0, 0);
+    }
 
     /// Player has no setter for m_social on a stock core; LoadFromDB assigns it from the login query. Explicit
     /// instantiation ignores access checks, so this names the private member without a core change.
@@ -170,58 +213,92 @@ bool Animus::BotFactory::PlaceInMap(Player* bot, Map* map, Position const& pos)
     return true;
 }
 
+bool Animus::BotFactory::CanJoin(Player* owner)
+{
+    return owner->IsInWorld() && !owner->IsBeingTeleported() && !owner->GetMap()->IsBattlegroundOrArena();
+}
+
 bool Animus::BotFactory::PlaceNear(Player* bot, Player* owner)
 {
-    Map* map = owner->GetMap();
-    if (map->Instanceable())
+    if (!CanJoin(owner))
     {
-        LOG_ERROR("module.animus", "Bot {} cannot be placed beside {} in instanced map {}", bot->GetName(),
-            owner->GetName(), map->GetId());
+        LOG_ERROR("module.animus", "Bot {} cannot be placed beside {} on map {} (between maps, or a battleground)",
+            bot->GetName(), owner->GetName(), owner->GetMapId());
         DestroyUnplaced(bot);
         return false;
     }
-
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-    owner->GetClosePoint(x, y, z, owner->GetCombatReach(), NEAR_DISTANCE, NEAR_ANGLE);
 
     bot->SetPhaseMask(owner->GetPhaseMask(), false);
-    if (!PlaceInMap(bot, map, Position(x, y, z, owner->GetOrientation())))
+    MatchDifficulty(bot, owner);
+    if (!PlaceInMap(bot, owner->GetMap(), SpotNear(owner)))
     {
         DestroyUnplaced(bot);
         return false;
     }
 
+    Arrived(bot, owner);
     return true;
 }
 
 bool Animus::BotFactory::TeleportNear(Player* bot, Player* owner)
 {
-    if (owner->GetMap()->Instanceable() || bot->IsBeingTeleported())
+    if (!CanJoin(owner) || bot->IsBeingTeleported())
         return false;
 
-    float x = 0.0f;
-    float y = 0.0f;
-    float z = 0.0f;
-    owner->GetClosePoint(x, y, z, owner->GetCombatReach(), NEAR_DISTANCE, NEAR_ANGLE);
+    // Another map, or another instance of the owner's map: the instance must take the bot, which is checked here
+    // rather than failing in the worldport (whose fallback is a teleport to the bot's homebind).
+    Map* map = owner->GetMap();
+    bool const sameMap = bot->FindMap() == map;
+    if (!sameMap)
+    {
+        if (Map::EnterState const refused = map->CannotEnter(bot, false))
+        {
+            LOG_DEBUG("module.animus", "Bot {} cannot follow {} into map {} instance {} (enter state {})",
+                bot->GetName(), owner->GetName(), map->GetId(), map->GetInstanceId(), uint32(refused));
+            return false;
+        }
+    }
 
-    bool const sameMap = bot->GetMapId() == owner->GetMapId();
-    if (!bot->TeleportTo(owner->GetMapId(), x, y, z, owner->GetOrientation()))
+    MatchDifficulty(bot, owner);
+    Position const spot = SpotNear(owner);
+
+    // GM mode skips the map's entry requirements (level, attunement, keys, the hourly instance limit): a bot follows
+    // its owner wherever the owner went. Another instance of the same map needs the far teleport too.
+    bool const newInstance = !sameMap && bot->GetMapId() == owner->GetMapId();
+    if (!bot->TeleportTo(owner->GetMapId(), spot.GetPositionX(), spot.GetPositionY(), spot.GetPositionZ(),
+        spot.GetOrientation(), TELE_TO_GM_MODE, nullptr, newInstance))
         return false;
 
-    // The bot has no client to acknowledge the teleport; the session handles the acknowledgement it would send.
-    if (sameMap)
+    CompleteTeleport(bot);
+    if (bot->FindMap() != map || !bot->IsInWorld())
+    {
+        LOG_ERROR("module.animus", "Bot {} did not arrive in {}'s map {} instance {}", bot->GetName(),
+            owner->GetName(), map->GetId(), map->GetInstanceId());
+        return false;
+    }
+
+    Arrived(bot, owner);
+    return true;
+}
+
+void Animus::BotFactory::CompleteTeleport(Player* bot)
+{
+    // A teleport requested during the bot's own update is delayed to the end of that update, which is over by the
+    // time the world thread calls this: the destination is final.
+    if (bot->IsBeingTeleportedFar())
+    {
+        bot->GetSession()->HandleMoveWorldportAck();
+
+        // A bot never answers the instance lock warning: it stays temporarily bound, as if it declined.
+        bot->SetPendingBind(0, 0);
+    }
+    else if (bot->IsBeingTeleportedNear())
     {
         WorldPacket ack(MSG_MOVE_TELEPORT_ACK);
         ack << bot->GetPackGUID();
         ack << uint32(0) << uint32(0);
         bot->GetSession()->HandleMoveTeleportAck(ack);
     }
-    else
-        bot->GetSession()->HandleMoveWorldportAck();
-
-    return true;
 }
 
 void Animus::BotFactory::DestroyUnplaced(Player* bot)
@@ -252,6 +329,10 @@ WorldSession* Animus::BotFactory::Destroy(Player* bot, bool keepSession)
     // A bot in the middle of a far teleport is on no map.
     Map* map = bot->FindMap();
     Difficulty const difficulty = map ? map->GetDifficulty() : REGULAR_DIFFICULTY;
+
+    // Off its transport first: the transport keeps a pointer to every passenger.
+    if (Transport* transport = bot->GetTransport())
+        transport->RemovePassenger(bot, true);
 
     // A dead bot would be repopped at a graveyard (a far teleport) by LogoutPlayer.
     if (!bot->IsAlive())

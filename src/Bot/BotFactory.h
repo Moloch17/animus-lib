@@ -77,14 +77,27 @@ namespace Animus::BotFactory
     /// Put a Create()d bot into an existing map at `pos`. Returns false on failure.
     bool PlaceInMap(Player* bot, Map* map, Position const& pos);
 
-    /// Put a Create()d bot into the world beside `owner`, on the owner's map and phase. The owner must be on a
-    /// non-instanced map. On failure the bot is discarded (DestroyUnplaced) and false returned.
+    /// Whether a bot can be put beside `owner` now: the owner is in the world, not between maps, and not in a
+    /// battleground or arena (those only take the players the battleground system queued).
+    [[nodiscard]] bool CanJoin(Player* owner);
+
+    /// Put a Create()d bot into the world beside `owner`: on the owner's map (open world, dungeon or raid instance)
+    /// and phase, with the owner's dungeon and raid difficulty, on the owner's transport if it rides one, and on the
+    /// ground below the owner if it is on a flight path. On failure (CanJoin, the map refusing the bot) the bot is
+    /// discarded (DestroyUnplaced) and false returned.
     bool PlaceNear(Player* bot, Player* owner);
 
-    /// Teleport a placed bot beside `owner`, on the owner's map, and complete the teleport as the client's
-    /// acknowledgement would (MSG_MOVE_TELEPORT_ACK, or the worldport ack for another map). The owner must be on a
-    /// non-instanced map. False if the bot could not be teleported.
+    /// Teleport a placed bot beside `owner` as PlaceNear places it, into the owner's instance too, and complete the
+    /// teleport as the client's acknowledgement would (see CompleteTeleport). The bot does not need to meet the
+    /// map's entry requirements (level, attunement, keys); false if CanJoin fails, the owner's instance refuses it
+    /// (full, an encounter in progress) or the teleport fails.
     bool TeleportNear(Player* bot, Player* owner);
+
+    /// Finish a teleport a bot started without TeleportNear (a transport changing maps, a summoning spell, a
+    /// scripted teleport) as the bot's client would acknowledge it: the worldport for another map, MSG_MOVE_TELEPORT_ACK
+    /// on the same map. Does nothing while no teleport is pending.
+    /// Call it on the world thread, outside map updates.
+    void CompleteTeleport(Player* bot);
 
     /// Log the bot out without saving and drop its instance bind. Deletes the session unless
     /// keepSession, in which case it is returned for the next Create.
