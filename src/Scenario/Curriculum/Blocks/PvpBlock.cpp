@@ -26,7 +26,6 @@
 #include "SpellMgr.h"
 #include "SpellAuraEffects.h"
 #include "SpellAuras.h"
-#include "Timer.h"
 #include <algorithm>
 #include <array>
 
@@ -107,11 +106,11 @@ void Animus::Curriculum::PvpBlock::Observe(SeatView const& view, float* obs, uin
             if (SpellInfo const* info = sSpellMgr->GetSpellInfo(racial))
                 obs[OBS_OPPONENT_BREAK_CD] = Animus::SpellChecks::CooldownFraction(opponent, info);
 
-    // Only spells on cooldown are in the map, so this stays cheap.
-    uint32 const now = getMSTime();
+    // The map holds cooldowns that ended but were not cleaned up yet, so ask the core whether each is still running:
+    // it compares against the clock cooldowns run on (the sim clock in the forge core, the wall clock in a stock one).
     uint32 majors = 0;
     for (auto const& [spellId, cooldown] : opponent->GetSpellCooldownMap())
-        if (!cooldown.itemid && cooldown.end > now && cooldown.maxduration >= MAJOR_COOLDOWN_MS)
+        if (!cooldown.itemid && cooldown.maxduration >= MAJOR_COOLDOWN_MS && opponent->GetSpellCooldownDelay(spellId))
             ++majors;
     obs[OBS_OPPONENT_MAJOR_CDS] = std::min(1.0f, float(majors) / 4.0f);
 
