@@ -186,6 +186,25 @@ namespace Animus::Curriculum
             float StepCost = 0.0002f;           // per decision
         } Travel;
 
+        /// The flag match (Warsong Gulch's rules between two seats).
+        struct FlagTuning
+        {
+            float BaseMin = 100.0f;             // yards between the bases, by path
+            float BaseMax = 180.0f;
+            uint32 CapturesToWin = 3;
+            uint32 RespawnMs = 15000;           // the dead stand up at their base after this (a graveyard wave)
+            uint32 DroppedReturnMs = 10000;     // a dropped flag goes home on its own after this
+            float TouchDistance = 4.0f;         // yards to pick up, return or capture
+            float Capture = 5.0f;
+            float Pickup = 1.0f;
+            float Return = 1.0f;
+            float CarrierKill = 1.5f;           // killing the one carrying the seat's flag
+            float Lost = 3.0f;                  // the other side captured the seat's flag
+            float Progress = 0.5f;              // potential shaping toward the seat's current objective, per 100 yd
+            float Death = 1.0f;
+            float StepCost = 0.0002f;           // per decision
+        } Flag;
+
         /// How the scripted players (owner, PvP opponent, ambushers) play.
         struct ScriptedPlayerTuning
         {
@@ -318,6 +337,21 @@ namespace Animus::Curriculum
             f("Travel.DamageTaken", tuning.Travel.DamageTaken);
             f("Travel.Death", tuning.Travel.Death);
             f("Travel.StepCost", tuning.Travel.StepCost);
+
+            f("Flag.BaseMin", tuning.Flag.BaseMin);
+            f("Flag.BaseMax", tuning.Flag.BaseMax);
+            f("Flag.CapturesToWin", tuning.Flag.CapturesToWin);
+            f("Flag.RespawnMs", tuning.Flag.RespawnMs);
+            f("Flag.DroppedReturnMs", tuning.Flag.DroppedReturnMs);
+            f("Flag.TouchDistance", tuning.Flag.TouchDistance);
+            f("Flag.Capture", tuning.Flag.Capture);
+            f("Flag.Pickup", tuning.Flag.Pickup);
+            f("Flag.Return", tuning.Flag.Return);
+            f("Flag.CarrierKill", tuning.Flag.CarrierKill);
+            f("Flag.Lost", tuning.Flag.Lost);
+            f("Flag.Progress", tuning.Flag.Progress);
+            f("Flag.Death", tuning.Flag.Death);
+            f("Flag.StepCost", tuning.Flag.StepCost);
 
             f("ScriptedPlayers.SpellMinMs", tuning.ScriptedPlayers.SpellMinMs);
             f("ScriptedPlayers.SpellMaxMs", tuning.ScriptedPlayers.SpellMaxMs);

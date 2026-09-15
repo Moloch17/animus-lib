@@ -107,6 +107,8 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     };
     orderYards(tuning.Travel.ObjectiveMin, tuning.Travel.ObjectiveMax);
     orderYards(tuning.Travel.FlyingMin, tuning.Travel.FlyingMax);
+    orderYards(tuning.Flag.BaseMin, tuning.Flag.BaseMax);
+    tuning.Flag.CapturesToWin = std::max<uint32>(1, tuning.Flag.CapturesToWin);
 
     tuning.Party.SizeWeight1 = std::max(0, tuning.Party.SizeWeight1);
     tuning.Party.SizeWeight2 = std::max(0, tuning.Party.SizeWeight2);

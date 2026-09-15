@@ -52,6 +52,7 @@ namespace Animus::Curriculum
         Hostiles,       // per enemy slot: player or creature, class, healing, stealth, pet (no actions)
         Pet,            // the pet bar: abilities, stance, follow and stay (classes with a controllable pet)
         Travel,         // mounts, flying and an objective to get to
+        Flag,           // a flag match: both flags, both bases, the score (no actions)
         Count
     };
 

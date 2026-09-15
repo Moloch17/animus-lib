@@ -164,6 +164,10 @@ void Animus::Curriculum::OpponentEncounter::View(Env const& env, uint32 seat, Se
 
 void Animus::Curriculum::OpponentEncounter::Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger)
 {
+    // A flag match pays for the flags (FlagEncounter), not for a one-on-one's single kill.
+    if (Flag(env))
+        return;
+
     // No opponent in the world (a far teleport, a failed rebuild): nothing to score, not even the step cost.
     if (Player* opponent = Find(env, seat); bot && opponent)
         CombatReward::OneOnOne(_scenario, env, seat, bot, opponent, ledger);
@@ -171,6 +175,10 @@ void Animus::Curriculum::OpponentEncounter::Reward(Env& env, uint32 seat, Player
 
 bool Animus::Curriculum::OpponentEncounter::IsTerminal(Env const& env) const
 {
+    // In a flag match the dead stand up again at their base; the flags end it.
+    if (Flag(env))
+        return false;
+
     EnvState const& data = _scenario.Data(env);
     if (Mirror(env))
         return data.Seats[0].Combat.Died || data.Seats[1].Combat.Died;

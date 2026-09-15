@@ -237,6 +237,22 @@ bool Animus::BotFactory::TeleportNear(Player* bot, Player* owner)
     return true;
 }
 
+bool Animus::BotFactory::TeleportWithinMap(Player* bot, Position const& pos)
+{
+    if (!bot->IsInWorld() || bot->IsBeingTeleported())
+        return false;
+
+    if (!bot->TeleportTo(bot->GetMapId(), pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ(),
+        pos.GetOrientation()))
+        return false;
+
+    WorldPacket ack(MSG_MOVE_TELEPORT_ACK);
+    ack << bot->GetPackGUID();
+    ack << uint32(0) << uint32(0);
+    bot->GetSession()->HandleMoveTeleportAck(ack);
+    return true;
+}
+
 void Animus::BotFactory::DestroyUnplaced(Player* bot)
 {
     WorldSession* session = bot->GetSession();

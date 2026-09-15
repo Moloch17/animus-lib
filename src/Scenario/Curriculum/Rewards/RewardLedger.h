@@ -56,6 +56,11 @@ namespace Animus::Curriculum
         PlayerKill,
         Progress,
         Arrive,
+        FlagCapture,
+        FlagPickup,
+        FlagReturn,
+        CarrierKill,
+        FlagLost,
         Count
     };
 

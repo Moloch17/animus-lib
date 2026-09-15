@@ -54,6 +54,11 @@ std::string_view Animus::Curriculum::RewardTermName(RewardTerm term)
         case RewardTerm::PlayerKill:            return "player_kill";
         case RewardTerm::Progress:              return "progress";
         case RewardTerm::Arrive:                return "arrive";
+        case RewardTerm::FlagCapture:           return "flag_capture";
+        case RewardTerm::FlagPickup:            return "flag_pickup";
+        case RewardTerm::FlagReturn:            return "flag_return";
+        case RewardTerm::CarrierKill:           return "carrier_kill";
+        case RewardTerm::FlagLost:              return "flag_lost";
         case RewardTerm::Count:                 break;
     }
 

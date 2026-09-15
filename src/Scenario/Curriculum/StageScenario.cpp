@@ -186,6 +186,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     CreatureEncounter* creature = nullptr;
     AmbushEncounter* ambush = nullptr;
     TravelEncounter* travel = nullptr;
+    FlagEncounter* flag = nullptr;
 
     auto const add = [this](auto encounter)
     {
@@ -196,12 +197,14 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
 
     auto const fightsPlayer = [](ArenaDefinition const& arena)
     {
-        return arena.Against == Opposition::ScriptedPlayer || arena.Against == Opposition::MirrorSeat;
+        return arena.Against == Opposition::ScriptedPlayer || arena.Against == Opposition::MirrorSeat
+            || arena.Against == Opposition::Flag;
     };
     auto const hasPulls = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Pulls; };
     auto const hasCreature = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Creature; };
     auto const hasAmbush = [](ArenaDefinition const& arena) { return arena.Ambushers > 0; };
     auto const hasTravel = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Travel; };
+    auto const hasFlag = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Flag; };
 
     // Build order matters: the owner comes before the party group (which it leads) and the pulls (which spawn around
     // it); both check it. Rewards do not depend on each other's order: what several read (a seat's damage taken, the
@@ -221,10 +224,13 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
         ambush = add(std::make_unique<AmbushEncounter>(*this, envs));
     if (_stage.AnyArena(hasTravel))
         travel = add(std::make_unique<TravelEncounter>(*this, envs));
+    // After the opponent, which makes the two seats enemies.
+    if (_stage.AnyArena(hasFlag))
+        flag = add(std::make_unique<FlagEncounter>(*this, envs));
 
     // The order episode info columns and reward terms are listed in.
     for (Encounter* encounter : std::initializer_list<Encounter*>{ creature, pulls, _owner, _party, opponent, ambush,
-        travel })
+        travel, flag })
         if (encounter)
             _rewardOrder.push_back(encounter);
 
@@ -237,7 +243,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
             return (encounter == opponent && fightsPlayer(arena)) || (encounter == _owner && arena.Owner)
                 || (encounter == _party && arena.PartyGroup) || (encounter == pulls && hasPulls(arena))
                 || (encounter == creature && hasCreature(arena)) || (encounter == ambush && hasAmbush(arena))
-                || (encounter == travel && hasTravel(arena));
+                || (encounter == travel && hasTravel(arena)) || (encounter == flag && hasFlag(arena));
         };
 
         std::vector<Encounter*>& build = _arenaEncounters.emplace_back();

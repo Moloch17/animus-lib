@@ -22,7 +22,8 @@
  *
  *   duel ─┬─ pack ─ gauntlet ─ companion ─ party ─┬─ crossroads     (PvE ...
  *         ├─ pvp ─ arena ─────────────────────────┘                  ... and PvP, merged)
- *         └─ travel ─ flight                                         (getting somewhere)
+ *         └─ travel ─┬─ flight                                       (getting somewhere)
+ *                    └─ (with arena) flag                            (Warsong Gulch's rules)
  *
  * Scenario names carry the stage's number (stage1_duel ... stage8_crossroads), model names only its suffix (_duel). The
  * duel is the first stage: nothing seeds it.
@@ -179,6 +180,21 @@ namespace
             .MinLevel = 60,
         });
 
+        // Warsong Gulch's rules between two learned seats (self-play): take the other side's flag home, return one's
+        // own, stop the carrier. Mounting between the bases and being dismounted by the flag come from travel; the
+        // fight from the arena.
+        stages.push_back({
+            .Name = "stage11_flag",
+            .Suffix = "_flag",
+            .Extends = "stage7_arena",
+            .Merges = { "stage9_travel" },
+            .Summary = "capture the flag one-on-one: bases 100-180 yd apart, first to three captures",
+            .Blocks = { Core, Duel, Pet, Pvp, Travel, Flag },
+            .Arenas = { { .Name = "flag", .Seats = SeatPlan::Mirror, .Against = Opposition::Flag, .Pvp = true,
+                .EpisodeSeconds = 300 } },
+            .MinLevel = 20,
+        });
+
         // A pilot of arena mixing and merging, not part of the curriculum: the duel and the scripted enemy player in
         // one stage, merging the two stages that trained them (each teaches its arena). Trained only when named
         // (forge start mix_duel_pvp).
@@ -204,7 +220,9 @@ namespace
     {
         bool const pulls = arena.Against == Opposition::Pulls;
         bool const ambushOnly = arena.Against == Opposition::Ambush;
-        bool const duelPlayer = arena.Against == Opposition::ScriptedPlayer || arena.Against == Opposition::MirrorSeat;
+        bool const flag = arena.Against == Opposition::Flag;
+        bool const duelPlayer = arena.Against == Opposition::ScriptedPlayer || arena.Against == Opposition::MirrorSeat
+            || flag;
         bool const player = duelPlayer || arena.Ambushers > 0;
 
         if (pulls != (arena.Schedule != PullSchedule::None))
@@ -217,8 +235,8 @@ namespace
             return "an owner needs pulls or an ambush, and the companion block";
         if (arena.PartyGroup && (!arena.Owner || arena.Seats != SeatPlan::Party || !stage.Has(BlockId::Party)))
             return "a party group needs an owner, party seats and the party block";
-        if ((arena.Seats == SeatPlan::Mirror) != (arena.Against == Opposition::MirrorSeat))
-            return "mirror seats go with fighting the mirror seat, and only with it";
+        if ((arena.Seats == SeatPlan::Mirror) != (arena.Against == Opposition::MirrorSeat || flag))
+            return "mirror seats go with fighting the mirror seat or a flag match, and only with them";
         if (arena.Ambushers > MAX_AMBUSHERS)
             return "at most " + std::to_string(MAX_AMBUSHERS) + " ambushers";
         if (arena.Ambushers > 0 && !(pulls || ambushOnly))
@@ -240,6 +258,8 @@ namespace
             return "travel is one seat on its own";
         if (arena.Flying && !travel)
             return "only a travel arena flies";
+        if (flag && (!stage.Has(BlockId::Travel) || !stage.Has(BlockId::Flag)))
+            return "a flag match needs the travel and flag blocks";
 
         return {};
     }

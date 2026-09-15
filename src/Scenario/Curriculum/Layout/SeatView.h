@@ -97,6 +97,21 @@ namespace Animus::Curriculum
         bool HasObjective = false;
         Position Objective;
 
+        // Flag match: the seat's flag and the other side's, from the seat's side.
+        enum class FlagState : uint8 { AtBase, Carried, Dropped };
+        struct FlagMatch
+        {
+            bool Active = false;
+            FlagState Own = FlagState::AtBase;      // carried: by the enemy
+            FlagState Enemy = FlagState::AtBase;    // carried: by the seat
+            Position OwnBase;
+            Position EnemyBase;
+            Position OwnDropped;                    // where each lies when dropped
+            Position EnemyDropped;
+            uint32 OwnScore = 0;
+            uint32 EnemyScore = 0;
+        } Flags;
+
         // PvP: the enemy player.
         Player* Opponent = nullptr;
         bool OpponentHidden = false;                // the bot can neither see nor detect it

@@ -71,12 +71,9 @@ void Animus::Curriculum::TravelEncounter::ResetEpisode(Env& env)
     _envs[env.Index] = EnvTravel();
 }
 
-bool Animus::Curriculum::TravelEncounter::PickObjective(Player* bot, Map* map, bool flying, Position& objective) const
+bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying,
+    Position& place)
 {
-    CurriculumTuning::TravelTuning const& tuning = _scenario.Tuning().Travel;
-    float const nearest = flying ? tuning.FlyingMin : tuning.ObjectiveMin;
-    float const furthest = flying ? tuning.FlyingMax : tuning.ObjectiveMax;
-
     for (uint32 attempt = 0; attempt < OBJECTIVE_ATTEMPTS; ++attempt)
     {
         // Later attempts settle for shorter trips rather than failing the episode.
@@ -101,7 +98,7 @@ bool Animus::Curriculum::TravelEncounter::PickObjective(Player* bot, Map* map, b
                 continue;
         }
 
-        objective.Relocate(x, y, z);
+        place.Relocate(x, y, z);
         return true;
     }
 
@@ -116,7 +113,10 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     if (!bot || !map)
         return false;
 
-    if (!PickObjective(bot, map, _scenario.Arena(env).Flying, travel.Objective))
+    CurriculumTuning::TravelTuning const& tuning = _scenario.Tuning().Travel;
+    bool const flying = _scenario.Arena(env).Flying;
+    if (!FindPlace(bot, map, flying ? tuning.FlyingMin : tuning.ObjectiveMin,
+        flying ? tuning.FlyingMax : tuning.ObjectiveMax, flying, travel.Objective))
         return false;
 
     travel.HasObjective = true;

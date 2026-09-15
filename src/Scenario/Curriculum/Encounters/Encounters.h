@@ -24,6 +24,7 @@
 #include "ObjectGuid.h"
 #include "RewardLedger.h"
 #include "ScriptedPlayer.h"
+#include "SeatView.h"
 #include "StageDefinition.h"
 #include "StageScenario.h"
 #include <array>
@@ -271,9 +272,14 @@ namespace Animus::Curriculum
         };
 
         /// Whether the env's opponent is the other seat.
+        /// The other seat is the opponent: self-play, or a flag match.
         [[nodiscard]] bool Mirror(Env const& env) const
         {
-            return _scenario.Arena(env).Against == Opposition::MirrorSeat;
+            return _scenario.Arena(env).Seats == SeatPlan::Mirror;
+        }
+        [[nodiscard]] bool Flag(Env const& env) const
+        {
+            return _scenario.Arena(env).Against == Opposition::Flag;
         }
         [[nodiscard]] Player* Find(Env const& env, uint32 seat) const;
         bool RebuildScripted(Env& env, Player* bot, Map* map);
@@ -353,6 +359,10 @@ namespace Animus::Curriculum
         void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
         [[nodiscard]] bool IsTerminal(Env const& env) const override;
 
+        /// A place `nearest`-`furthest` yd from `bot` on ground that is not water; on foot (`flying` false) one it can
+        /// walk to by a path not much longer than the straight line. False if none was found.
+        static bool FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying, Position& place);
+
     private:
         struct EnvTravel
         {
@@ -367,10 +377,66 @@ namespace Animus::Curriculum
             uint32 LastRewardMs = 0;
         };
 
-        /// A spot for the objective around `bot`; false if none was found.
-        bool PickObjective(Player* bot, Map* map, bool flying, Position& objective) const;
-
         std::vector<EnvTravel> _envs;
+    };
+
+    /// Warsong Gulch's rules between the two mirror seats: each has a flag at its base; touching the other's takes it
+    /// (and dismounts the carrier, who cannot mount while carrying), touching one's own dropped flag returns it, and
+    /// carrying the other's home while one's own is there captures it. A carrier who dies drops the flag where it fell;
+    /// a dropped flag goes home on its own after a while. The dead stand up at their base after a wave. First to
+    /// Flag.CapturesToWin ends the match. The seat's travel objective is where its side needs it next.
+    class FlagEncounter final : public Encounter
+    {
+    public:
+        FlagEncounter(StageScenario& scenario, uint32 envs);
+
+        [[nodiscard]] std::vector<RewardTerm> RewardTerms() const override;
+        void AddEpisodeInfo(EpisodeInfoTable& table) override;
+        void ResetEpisode(Env& env) override;
+        bool Build(Env& env, Map* map, uint8 level) override;
+        void Update(Env& env) override;
+        void View(Env const& env, uint32 seat, SeatView& view) const override;
+        void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
+        [[nodiscard]] bool IsTerminal(Env const& env) const override;
+
+    private:
+        /// What a seat heads for, in the order a player would pick it.
+        enum class Goal : uint8 { None, CaptureHome, ReturnOwn, TakeEnemy, PickUpEnemy, ChaseCarrier };
+
+        struct Side
+        {
+            Position Base;
+            SeatView::FlagState State = SeatView::FlagState::AtBase;   // this side's own flag
+            Position Dropped;
+            uint32 DroppedMs = 0;
+            uint32 Captures = 0;
+            uint32 Pickups = 0;
+            uint32 Returns = 0;
+            uint32 CarrierKills = 0;
+            uint32 Deaths = 0;
+            bool Dead = false;
+            uint32 RespawnMs = 0;
+            // Since the last reward.
+            uint32 StepCaptures = 0;
+            uint32 StepPickups = 0;
+            uint32 StepReturns = 0;
+            uint32 StepCarrierKills = 0;
+            uint32 StepLost = 0;
+            uint32 StepDeaths = 0;
+            float LastDistance = -1.0f;         // shaping toward the current goal; < 0 = none yet
+            Goal LastGoal = Goal::None;
+        };
+
+        struct EnvFlags
+        {
+            std::array<Side, 2> Sides;
+            bool Built = false;
+        };
+
+        /// Where seat `seat` should go now, and why.
+        [[nodiscard]] Goal CurrentGoal(Env const& env, uint32 seat, Position& place) const;
+
+        std::vector<EnvFlags> _envs;
     };
 }
 

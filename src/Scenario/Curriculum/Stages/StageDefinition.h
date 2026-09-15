@@ -44,6 +44,7 @@ namespace Animus::Curriculum
         MirrorSeat,     // the other seat (SeatPlan::Mirror)
         Ambush,         // only ambushers: scripted enemy players attacking the owner (ArenaDefinition::Ambushers)
         Travel,         // a place to get to (ArenaDefinition::Flying for one best reached in the air)
+        Flag,           // Warsong Gulch's rules between the two mirror seats: take the other's flag home
     };
 
     enum class PullSchedule : uint8

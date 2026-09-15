@@ -90,6 +90,9 @@ namespace Animus::BotFactory
     /// non-instanced map. False if the bot could not be teleported.
     bool TeleportNear(Player* bot, Player* owner);
 
+    /// Teleport a placed bot to `pos` on its own map (an instance too), acknowledging for the client it has not.
+    bool TeleportWithinMap(Player* bot, Position const& pos);
+
     /// Log the bot out without saving and drop its instance bind. Deletes the session unless
     /// keepSession, in which case it is returned for the next Create.
     WorldSession* Destroy(Player* bot, bool keepSession = false);
