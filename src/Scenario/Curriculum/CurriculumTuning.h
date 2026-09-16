@@ -67,7 +67,8 @@ namespace Animus::Curriculum
             float DamageDealt = 2.0f;           // fraction of the opponent's health: a kill is worth this in damage
             float DamageTaken = 1.0f;           // fraction of the bot's health
             float Approach = 0.5f;              // shaping toward the spec's range, per 40 yd closed
-            float StealthOpener = 0.5f;         // a harmful spell from stealth that breaks it (Ambush, Cheap Shot)
+            float StealthOpener = 0.5f;         // a harmful spell from stealth that breaks it (Ambush, Cheap Shot,
+                                                // a feral druid's Pounce or Ravage out of Prowl)
             float StealthUtility = 0.05f;       // one that keeps it (Sap, Distract), once per target per stealth
             float StepCost = 0.0002f;           // per decision
             float Kill = 2.0f;
@@ -221,7 +222,8 @@ namespace Animus::Curriculum
             float TauntRange = 25.0f;
             float RangedMin = 20.0f;            // PvP: a ranged spec backs off inside half this ...
             float RangedMax = 30.0f;            // ... and closes in beyond this
-            int32 StealthChance = 50;           // PvP: percent of engagements a rogue sneaks up in stealth
+            int32 StealthChance = 50;           // PvP: percent of engagements a rogue (or a feral druid, which
+                                                // shifts to Cat Form first) sneaks up in stealth
             int32 TacticsChance = 75;           // PvP: percent of engagements it plays its kit (below)
             uint32 ControlMinMs = 8000;         // ... time between crowd control attempts
             uint32 ControlMaxMs = 15000;

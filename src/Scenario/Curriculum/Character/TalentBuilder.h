@@ -34,13 +34,18 @@ namespace Animus::Curriculum
     /// A standard build spends points one at a time, each on the first talent of the spec's list that still wants
     /// ranks and can take a point right now (row requirement: 5 points per row in the tree; prerequisite talent at
     /// its required rank), so a low-level character has the talents players take first. A random build spends each
-    /// point on a uniformly chosen talent that can take one: the spec's tree until it holds SPEC_TREE_POINTS (the
-    /// capstone row), then the other two trees. Points a standard build cannot place are spent randomly.
+    /// point on a talent that can take one, drawn with the row as its weight so the build walks down the tree far
+    /// enough to reach its last row rather than filling the cheap rows first. Points a standard build cannot place
+    /// are spent randomly.
+    ///
+    /// Either way the spec's tree never holds more than SPEC_TREE_POINTS: 51 is what its last row needs, and a
+    /// player's build spends the rest in the other two trees.
     class TalentBuilder
     {
     public:
-        static constexpr uint32 SPEC_TREE_POINTS = 51;
+        static constexpr uint32 SPEC_TREE_POINTS = 51;  // the points the last row of a tree needs: its cap
         static constexpr uint32 TREE_COUNT = 3;
+        static constexpr uint8 NO_TAB = 0xFF;           // "no tree is the spec's", for Spend and CanTake
 
         struct Talent
         {
@@ -104,8 +109,10 @@ namespace Animus::Curriculum
             std::vector<Glyph> Minors;
         };
 
-        void Spend(Build& build, uint32 treeMask, uint32 points) const;
-        [[nodiscard]] bool CanTake(Build const& build, uint32 index) const;
+        /// Spend `points` at random in the trees of `treeMask`; `specTab` is the tree capped at SPEC_TREE_POINTS
+        /// (NO_TAB to cap none).
+        void Spend(Build& build, uint32 treeMask, uint32 points, uint8 specTab) const;
+        [[nodiscard]] bool CanTake(Build const& build, uint32 index, uint8 specTab) const;
 
         std::vector<Talent> _talents;               // by tab, row, column
         std::map<std::string, SpecData> _specs;     // by SpecProfile::Name

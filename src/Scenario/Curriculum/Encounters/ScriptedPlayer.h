@@ -50,7 +50,8 @@ namespace Animus::Curriculum::ScriptedPlayer
         std::vector<uint32> Spells;     // harmful single-target combat spells it knows (highest ranks)
         std::vector<uint32> Heals;      // single-target heals it knows
         std::vector<uint32> Taunts;     // single-target taunts it knows
-        std::vector<uint32> Stealths;   // Stealth (rogues): it may sneak up on an enemy player
+        std::vector<uint32> Stealths;   // Stealth, Prowl: it may sneak up on an enemy player
+        uint32 StealthForm = 0;         // the form its stealth needs first (Prowl: Cat Form); 0 when it needs none
         std::vector<uint32> Openers;    // harmful spells only usable from stealth (Cheap Shot, Garrote, Ambush)
         std::vector<uint32> Interrupts; // Kick, Counterspell, Wind Shear, Spell Lock-style silences
         std::vector<uint32> Controls;   // stuns, fears, polymorphs, roots and snares at an enemy
@@ -67,6 +68,8 @@ namespace Animus::Curriculum::ScriptedPlayer
         bool QuarrySeen = false;
         Position LastSeen;
         bool StealthDecided = false;    // it rolled whether to sneak up this engagement
+        bool Sneaking = false;          // it rolled to sneak and is getting into (its form and) stealth
+        uint32 SneakUntilMs = 0;        // ... giving up at this episode time, so a failed shift cannot stall it
     };
 
     /// Dress a placed bot of the assets' class and role: proficiencies, a random build of one of the role's specs,

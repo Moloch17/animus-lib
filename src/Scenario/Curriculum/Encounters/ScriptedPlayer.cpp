@@ -62,11 +62,43 @@ namespace
         return false;
     }
 
-    /// Stealth itself: a stealth form (not Prowl, which needs Cat Form, nor Shadowmeld, which moving breaks).
+    /// Stealth itself: a rogue's Stealth (a stealth form) or a druid's Prowl (stealth inside Cat Form). Not
+    /// Shadowmeld, which needs neither and breaks as soon as the player moves.
     bool IsStealth(SpellInfo const* info)
     {
         return info && !info->IsPassive() && info->HasAura(SPELL_AURA_MOD_STEALTH)
-            && info->HasAura(SPELL_AURA_MOD_SHAPESHIFT);
+            && (info->HasAura(SPELL_AURA_MOD_SHAPESHIFT) || info->Stances);
+    }
+
+    /// Whether `stances` (a spell's form requirement) allows the player's current form. No requirement: any form.
+    bool InRequiredForm(Player const* player, uint32 stances)
+    {
+        uint8 const form = uint8(player->GetShapeshiftForm());
+        return !stances || (form && (stances & (1u << (form - 1))));
+    }
+
+    /// A spell the player knows that puts it in a form `stances` allows (Prowl's Cat Form); 0 if it knows none.
+    uint32 FormSpellFor(Player const* player, uint32 stances)
+    {
+        if (!stances)
+            return 0;
+
+        for (auto const& [spellId, spell] : player->GetSpellMap())
+        {
+            if (spell->State == PLAYERSPELL_REMOVED || !spell->Active)
+                continue;
+
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+            if (!info || info->IsPassive())
+                continue;
+
+            for (SpellEffectInfo const& effect : info->GetEffects())
+                if (effect.ApplyAuraName == SPELL_AURA_MOD_SHAPESHIFT && effect.MiscValue > 0
+                    && (stances & (1u << (effect.MiscValue - 1))))
+                    return spellId;
+        }
+
+        return 0;
     }
 
     /// A harmful single-target spell only usable from stealth that starts the fight (not Sap, which keeps stealth).
@@ -126,6 +158,9 @@ namespace
 
         return false;
     }
+
+    /// How long a scripted player keeps trying to get into stealth before it gives up and just fights.
+    constexpr uint32 SNEAK_MS = 5000;
 
     bool TryCast(Player* caster, uint32 spellId, Unit* target)
     {
@@ -386,7 +421,12 @@ void Animus::Curriculum::ScriptedPlayer::Configure(Player* player, ClassRoleAsse
         else if (IsHeal(info))
             state.Heals.push_back(spellId);
         else if (IsStealth(info))
+        {
             state.Stealths.push_back(spellId);
+            // Prowl works inside Cat Form only: remember the shift, so a feral druid can sneak up like a rogue.
+            if (!state.StealthForm)
+                state.StealthForm = FormSpellFor(player, info->Stances);
+        }
         else if (IsOpener(info))
             state.Openers.push_back(spellId);
         else if (IsBreak(info))
@@ -476,14 +516,33 @@ void Animus::Curriculum::ScriptedPlayer::UpdateOpponent(Player* player, Player* 
     if (nowMs < state.EngageMs)
         return;
 
-    // A rogue may sneak up: once per engagement, before any fighting.
+    // A rogue or a feral druid may sneak up: once per engagement, before any fighting.
     if (!state.StealthDecided)
     {
         state.StealthDecided = true;
         state.Tactics = roll_chance_i(tuning.TacticsChance);
         state.NextControlMs = nowMs + urand(0, tuning.ControlMinMs);
-        if (!state.Stealths.empty() && !player->IsInCombat() && roll_chance_i(tuning.StealthChance))
-            TryAny(player, state.Stealths, player);
+        state.Sneaking = !state.Stealths.empty() && !player->IsInCombat()
+            && roll_chance_i(tuning.StealthChance);
+        state.SneakUntilMs = nowMs + SNEAK_MS;
+    }
+
+    // Getting into stealth can take two casts (Cat Form, then Prowl), a global cooldown apart, so it runs over
+    // several updates: shift if the stealth needs a form, then stealth. Combat, or the time limit, ends the attempt.
+    if (state.Sneaking)
+    {
+        SpellInfo const* stealth = sSpellMgr->GetSpellInfo(state.Stealths.front());
+        if (player->HasStealthAura() || player->IsInCombat() || nowMs >= state.SneakUntilMs || !stealth)
+            state.Sneaking = false;
+        else if (state.StealthForm && !InRequiredForm(player, stealth->Stances))
+        {
+            TryCast(player, state.StealthForm, player);
+            return;
+        }
+        else if (TryAny(player, state.Stealths, player))
+            state.Sneaking = false;
+        else
+            return;
     }
 
     // Survive first: break crowd control, then a defensive when low.

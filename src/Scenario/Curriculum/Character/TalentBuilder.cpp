@@ -166,14 +166,33 @@ Animus::Curriculum::TalentBuilder::TalentBuilder(uint8 playerClass)
             data.Picks.push_back({ uint32(talent - _talents.begin()), pick.Ranks });
         }
 
+        // A list that asks for more than the cap in one tree: the points past it are spent in the other trees
+        // instead, so the tail of the list (its last-named talents) is not taken at level 80.
+        std::array<uint32, TREE_COUNT> listed{};
+        for (TalentPick const& pick : specBuild.Talents)
+            if (pick.Tab < TREE_COUNT)
+                listed[pick.Tab] += pick.Ranks;
+
+        for (uint8 tab = 0; tab < TREE_COUNT; ++tab)
+            if (listed[tab] > SPEC_TREE_POINTS)
+                LOG_WARN("module.animus", "Class {} {}: tree {} lists {} points, {} more than the {} a tree takes; "
+                    "the extra go to the other trees", playerClass, specBuild.Spec, tab, listed[tab],
+                    listed[tab] - SPEC_TREE_POINTS, SPEC_TREE_POINTS);
+
         data.Majors = resolveGlyphs(specBuild.MajorGlyphs, specBuild.Spec.data());
         data.Minors = resolveGlyphs(specBuild.MinorGlyphs, specBuild.Spec.data());
     }
 }
 
-bool Animus::Curriculum::TalentBuilder::CanTake(Build const& build, uint32 index) const
+bool Animus::Curriculum::TalentBuilder::CanTake(Build const& build, uint32 index, uint8 specTab) const
 {
     Talent const& talent = _talents[index];
+
+    // The spec tree never takes more than the 51 points its last row needs: the rest belongs in the other trees,
+    // as a player's build spends it. specTab past the tree count (NO_TAB) caps nothing.
+    if (talent.Tab == specTab && build.TreePoints[talent.Tab] >= SPEC_TREE_POINTS)
+        return false;
+
     return build.Ranks[index] < talent.MaxRank && build.TreePoints[talent.Tab] >= talent.Row * MAX_TALENT_RANK
         && (talent.DependsOn < 0 || build.Ranks[talent.DependsOn] >= talent.DependsOnRanks);
 }
@@ -197,7 +216,7 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Stan
         auto const next = std::find_if(data->second.Picks.begin(), data->second.Picks.end(),
             [&](Pick const& pick)
             {
-                return build.Ranks[pick.Index] < wanted[pick.Index] && CanTake(build, pick.Index);
+                return build.Ranks[pick.Index] < wanted[pick.Index] && CanTake(build, pick.Index, specTab);
             });
         if (next == data->second.Picks.end())
             break;
@@ -207,10 +226,10 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Stan
         ++build.TreePoints[_talents[next->Index].Tab];
     }
 
-    // Only if the list cannot place them.
+    // Only if the list cannot place them: the spec tree up to its cap, then the other trees.
     uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
-    Spend(build, 1u << specTab, points - uint32(build.Order.size()));
-    Spend(build, otherTrees, points - uint32(build.Order.size()));
+    Spend(build, 1u << specTab, points - uint32(build.Order.size()), specTab);
+    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
     return build;
 }
 
@@ -254,31 +273,45 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Rand
     uint32 const specPoints = std::min(points, SPEC_TREE_POINTS);
     uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
 
-    Spend(build, 1u << specTab, specPoints);
-    Spend(build, otherTrees, points - uint32(build.Order.size()));
-
-    // Only if the other trees could not take the rest: back to the spec tree.
-    Spend(build, 1u << specTab, points - uint32(build.Order.size()));
+    Spend(build, 1u << specTab, specPoints, specTab);
+    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
 
     return build;
 }
 
-void Animus::Curriculum::TalentBuilder::Spend(Build& build, uint32 treeMask, uint32 points) const
+void Animus::Curriculum::TalentBuilder::Spend(Build& build, uint32 treeMask, uint32 points, uint8 specTab) const
 {
     std::vector<uint32> candidates;
+    std::vector<uint32> weights;
     for (uint32 point = 0; point < points; ++point)
     {
         candidates.clear();
+        weights.clear();
+        uint32 total = 0;
         for (uint32 i = 0; i < _talents.size(); ++i)
         {
-            if ((treeMask & (1u << _talents[i].Tab)) && CanTake(build, i))
-                candidates.push_back(i);
+            if (!(treeMask & (1u << _talents[i].Tab)) || !CanTake(build, i, specTab))
+                continue;
+
+            // Deeper rows are likelier, so a build walks down its tree instead of filling the cheap rows first and
+            // arriving at the last row with no points left: a player spends the 5 a row needs and moves on.
+            candidates.push_back(i);
+            weights.push_back(_talents[i].Row + 1);
+            total += _talents[i].Row + 1;
         }
 
         if (candidates.empty())
             return;
 
-        uint32 const chosen = candidates[urand(0, uint32(candidates.size()) - 1)];
+        uint32 roll = urand(0, total - 1);
+        std::size_t pick = 0;
+        while (pick + 1 < candidates.size() && roll >= weights[pick])
+        {
+            roll -= weights[pick];
+            ++pick;
+        }
+
+        uint32 const chosen = candidates[pick];
         build.Order.push_back({ chosen, build.Ranks[chosen] });
         ++build.Ranks[chosen];
         ++build.TreePoints[_talents[chosen].Tab];
