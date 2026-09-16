@@ -166,23 +166,17 @@ Animus::Curriculum::TalentBuilder::TalentBuilder(uint8 playerClass)
             data.Picks.push_back({ uint32(talent - _talents.begin()), pick.Ranks });
         }
 
-        // A list may name more than SPEC_TREE_POINTS in one tree; the spend caps it there and puts the rest in
-        // the other trees, so its last-named talents are the ones that go. Every list does, so it is not news.
+        // A list names the whole 71-point build: 53 to 61 in the spec's own tree, where its last row and the
+        // ability the spec is built around live, and the rest in a support tree. It is spent as written.
 
         data.Majors = resolveGlyphs(specBuild.MajorGlyphs, specBuild.Spec.data());
         data.Minors = resolveGlyphs(specBuild.MinorGlyphs, specBuild.Spec.data());
     }
 }
 
-bool Animus::Curriculum::TalentBuilder::CanTake(Build const& build, uint32 index, uint8 specTab) const
+bool Animus::Curriculum::TalentBuilder::CanTake(Build const& build, uint32 index) const
 {
     Talent const& talent = _talents[index];
-
-    // The spec tree never takes more than the 51 points its last row needs: the rest belongs in the other trees,
-    // as a player's build spends it. specTab past the tree count (NO_TAB) caps nothing.
-    if (talent.Tab == specTab && build.TreePoints[talent.Tab] >= SPEC_TREE_POINTS)
-        return false;
-
     return build.Ranks[index] < talent.MaxRank && build.TreePoints[talent.Tab] >= talent.Row * MAX_TALENT_RANK
         && (talent.DependsOn < 0 || build.Ranks[talent.DependsOn] >= talent.DependsOnRanks);
 }
@@ -206,7 +200,7 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Stan
         auto const next = std::find_if(data->second.Picks.begin(), data->second.Picks.end(),
             [&](Pick const& pick)
             {
-                return build.Ranks[pick.Index] < wanted[pick.Index] && CanTake(build, pick.Index, specTab);
+                return build.Ranks[pick.Index] < wanted[pick.Index] && CanTake(build, pick.Index);
             });
         if (next == data->second.Picks.end())
             break;
@@ -216,10 +210,10 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Stan
         ++build.TreePoints[_talents[next->Index].Tab];
     }
 
-    // Only if the list cannot place them: the spec tree up to its cap, then the other trees.
+    // Only if the list cannot place them: its own tree first, then the others.
     uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
-    Spend(build, 1u << specTab, points - uint32(build.Order.size()), specTab);
-    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
+    Spend(build, 1u << specTab, points - uint32(build.Order.size()));
+    Spend(build, otherTrees, points - uint32(build.Order.size()));
     return build;
 }
 
@@ -232,8 +226,8 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Nois
     Build build = Standard(spec, specTab, points - move);
 
     uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
-    Spend(build, 1u << specTab, points - uint32(build.Order.size()), specTab);
-    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
+    Spend(build, 1u << specTab, points - uint32(build.Order.size()));
+    Spend(build, otherTrees, points - uint32(build.Order.size()));
     return build;
 }
 
@@ -277,13 +271,16 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Rand
     uint32 const specPoints = std::min(points, SPEC_TREE_POINTS);
     uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
 
-    Spend(build, 1u << specTab, specPoints, specTab);
-    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
+    Spend(build, 1u << specTab, specPoints);
+    Spend(build, otherTrees, points - uint32(build.Order.size()));
+
+    // Only if the other trees could not take the rest: back to the spec tree, rather than leave points unspent.
+    Spend(build, 1u << specTab, points - uint32(build.Order.size()));
 
     return build;
 }
 
-void Animus::Curriculum::TalentBuilder::Spend(Build& build, uint32 treeMask, uint32 points, uint8 specTab) const
+void Animus::Curriculum::TalentBuilder::Spend(Build& build, uint32 treeMask, uint32 points) const
 {
     std::vector<uint32> candidates;
     std::vector<uint32> weights;
@@ -294,7 +291,7 @@ void Animus::Curriculum::TalentBuilder::Spend(Build& build, uint32 treeMask, uin
         uint32 total = 0;
         for (uint32 i = 0; i < _talents.size(); ++i)
         {
-            if (!(treeMask & (1u << _talents[i].Tab)) || !CanTake(build, i, specTab))
+            if (!(treeMask & (1u << _talents[i].Tab)) || !CanTake(build, i))
                 continue;
 
             // Deeper rows are likelier, so a build walks down its tree instead of filling the cheap rows first and

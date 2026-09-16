@@ -38,14 +38,15 @@ namespace Animus::Curriculum
     /// enough to reach its last row rather than filling the cheap rows first. Points a standard build cannot place
     /// are spent randomly.
     ///
-    /// Either way the spec's tree never holds more than SPEC_TREE_POINTS: 51 is what its last row needs, and a
-    /// player's build spends the rest in the other two trees.
+    /// A spec's list names the whole 71-point build and is spent as written: 53 to 61 points in its own tree,
+    /// which is where its last row and the ability the spec is built around are, and the rest in a support tree.
+    /// SPEC_TREE_POINTS is what the last row needs, not a ceiling -- a random build uses it to split its points
+    /// the way a real one does.
     class TalentBuilder
     {
     public:
-        static constexpr uint32 SPEC_TREE_POINTS = 51;  // the points the last row of a tree needs: its cap
+        static constexpr uint32 SPEC_TREE_POINTS = 51;  // the points the last row of a tree needs to unlock
         static constexpr uint32 TREE_COUNT = 3;
-        static constexpr uint8 NO_TAB = 0xFF;           // "no tree is the spec's", for Spend and CanTake
 
         struct Talent
         {
@@ -113,10 +114,10 @@ namespace Animus::Curriculum
             std::vector<Glyph> Minors;
         };
 
-        /// Spend `points` at random in the trees of `treeMask`; `specTab` is the tree capped at SPEC_TREE_POINTS
-        /// (NO_TAB to cap none).
-        void Spend(Build& build, uint32 treeMask, uint32 points, uint8 specTab) const;
-        [[nodiscard]] bool CanTake(Build const& build, uint32 index, uint8 specTab) const;
+        /// Spend `points` in the trees of `treeMask`, drawn with the row as the weight so a build walks down a
+        /// tree rather than filling its cheap rows first.
+        void Spend(Build& build, uint32 treeMask, uint32 points) const;
+        [[nodiscard]] bool CanTake(Build const& build, uint32 index) const;
 
         std::vector<Talent> _talents;               // by tab, row, column
         std::map<std::string, SpecData> _specs;     // by SpecProfile::Name
