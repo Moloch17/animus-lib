@@ -1,83 +1,51 @@
 # animus-lib
 
-The code [mod-animus-forge](https://github.com/Moloch17/animus-forge) (training, on the Animus Forge core) and
-[mod-animus](https://github.com/Moloch17/animus) (playing trained models, on a stock AzerothCore) share: the
-curriculum's stages and everything they are built from. Both modules run the same scenario code, so a stage a
-game master watches with mod-animus is exactly the stage the forge trained on, and a model's observations and
-actions mean the same in training and in play.
+The code that training and play share. [mod-animus-forge](https://github.com/Moloch17/animus-forge) trains models with
+it on the forge core; [mod-animus](https://github.com/Moloch17/animus) plays them with it on a stock AzerothCore. Both
+run the same scenarios and encodings, so a stage a game master watches is exactly the stage the forge trained, and a
+model's observations and actions mean the same thing in training and in play.
 
-It is an AzerothCore module of its own (`modules/mod-animus-lib`) that registers only the combat hooks env pools
-need. It uses public core APIs only and builds on both cores; it has no settings.
+It is an AzerothCore module (`modules/mod-animus-lib`), but a passive one: no settings, no commands, no world update.
+It registers only the combat hooks env pools need, uses only public core APIs, and builds on both cores.
+
+**The detail is in the Animus manual:**
+[chapter 3](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md) for the machinery and
+[chapter 4](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/04-curriculum.md) for the curriculum.
+This page is the map.
+
+## What is in it
+
+| Directory | Contents | Manual |
+|---|---|---|
+| `src/Scenario/Curriculum/` | The curriculum: stage definitions, blocks (observation features and actions), layouts and manifests, encounters, character building, rewards, scripted baselines, tuning | [4](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/04-curriculum.md) |
+| `src/Scenario/` | `Scenario`, the interface a host drives, and `StageSettings`, what a host tells it | [3.3](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#33-the-scenario-interface) |
+| `src/Env/` | `EnvPool`: every env of a scenario and the flat buffers a host exchanges | [3.4](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#34-envs-and-the-env-pool) |
+| `src/Bot/` | Sessionless bots with no character row, rebuilt every episode | [3.5](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#35-bots) |
+| `src/Core/` | `CoreHooks`, the seams for what only the forge core can do | [3.6](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#36-core-seams-corehooks) |
+| `src/Model/` | The `.amdl` reader and forward pass, and the library that checks a model against its manifest | [3.8](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#38-models) |
+| `src/Hooks/` | Damage, heal, cast and creature level hooks feeding every registered pool | [3.4](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/03-animus-lib.md#hooks-and-threading) |
+| `tools/spec_builds/` | The standard talent builds and glyphs, and the generator for `SpecBuilds.cpp` | [4.3](https://github.com/Moloch17/animus-forge/blob/master/docs/manual/04-curriculum.md#43-characters) |
 
 ## Getting it
 
-mod-animus and mod-animus-forge clone it when you configure and `modules/mod-animus-lib` is missing
-(`https://github.com/Moloch17/animus-lib.git`, branch `master`; override with `-DANIMUS_LIB_GIT_URL=...` and
-`-DANIMUS_LIB_GIT_REF=...`). To clone it yourself:
+mod-animus and mod-animus-forge clone it when you configure and `modules/mod-animus-lib` is missing (from
+`ANIMUS_LIB_GIT_URL` at `ANIMUS_LIB_GIT_REF`, by default `https://github.com/Moloch17/animus-lib.git` at `master`).
+To clone it yourself:
 
 ```
 git clone https://github.com/Moloch17/animus-lib.git modules/mod-animus-lib
 ```
 
 Build it the way you build the modules that need it: static (the default) or all dynamic.
-`cmake/AnimusLibDependency.cmake` holds the rules the dependents' `.cmake` files apply.
+`cmake/AnimusLibDependency.cmake` holds the rules the dependents apply.
 
-## What is in it
+## Changing it
 
-| Directory | Contents |
-|---|---|
-| `src/Scenario/Curriculum/` | The curriculum: `Stages/` (stage and arena definitions), `Blocks/` (observation features and actions), `Layout/` (layouts, manifests, `SeatEncoder`, `SeatView`), `Encounters/` (creatures, pulls, owner, party, scripted and ambushing enemy players), `Character/` (class/role profiles, kit, talents and spec builds, gear, supplies, `SeatCharacter`), `Rewards/`, `Baselines/`, `CurriculumTuning`, `StageScenario` |
-| `src/Scenario/` | `Scenario` (the interface a host drives), `StageSettings` (what a host tells it), spawn area clearing, spell checks, summon levels |
-| `src/Env/` | `Env`, `EnvPool` (every env of a scenario and the flat buffers a host reads and writes), `PoolRegistry` |
-| `src/Bot/` | `BotFactory` (sessionless players with no character row), `BotSlot` (bots rebuilt every episode), `BotAccounts` |
-| `src/Model/` | `MlpPolicy` (the exported `.amdl` actor), `ModelLibrary` (a layout's model, checked against its manifest) |
-| `src/Core/` | `CoreHooks`: the seams for what only the forge core can do |
-| `src/Hooks/` | Damage, heal, cast and creature level hooks for every registered env pool |
-| `tools/spec_builds/` | The standard talent builds and glyphs; `generate.py` writes `SpecBuilds.cpp`. Characters draw a standard, a partly random or a fully random build (`Characters.*TalentChance`) |
+A layout's manifest records everything its model depends on: the stage's blocks, each block's features and actions,
+the action catalog and the talents. Change any of them and every model exported before the change is refused, and the
+affected stages must be retrained from the first one that has the change. All three Animus modules share one include
+path, so header names must stay unique across them, and nothing here may call a forge-only core API directly: add a
+`CoreHooks` seam instead. Recipes for tuning values, reward terms, features, blocks, encounters and stages are in
+[manual 7.9][manual-7-9].
 
-## Using it from a module
-
-A host builds a scenario and its env pool from `StageSettings`, registers the pool so the hooks feed it, and
-drives it from its world update:
-
-```cpp
-Animus::StageSettings settings;
-settings.Envs = 1;
-settings.TuningPrefix = "MyModule.Curriculum.";     // where CurriculumTuning reads its keys
-
-auto scenario = Animus::CreateScenario("stage2_pack", settings);
-Animus::EnvPool pool(*scenario, settings);
-pool.Setup();
-pool.ResetAll();
-Animus::PoolRegistry::Register(&pool);
-
-// Every world update:
-pool.AdvanceClock(diff);
-// Every StageSettings::DecisionMs:
-pool.Collect();                     // rewards, episode ends and resets, observations
-pool.ChooseLocalActions("fight");   // or fill pool.Actions from a learner or a model
-pool.ApplyActions();
-
-// Done:
-Animus::PoolRegistry::Unregister(&pool);
-pool.Teardown();
-```
-
-- **Threads:** everything runs on the world thread outside map updates (a `WorldScript::OnUpdate`); only the hooks
-  run on map threads.
-- **Loader:** the dependent's `Add<module>Scripts()` calls `Addmod_animus_libScripts()` first. It registers the
-  library's scripts once, however many modules call it, so they are registered even when the library was cloned
-  during the configure that built them.
-- **Placing an env:** `EnvPool::PlaceEnv` builds an env in an existing instance (mod-animus's stage viewer uses the
-  game master's) instead of opening a new one.
-- **Env ids:** `StageSettings::FirstEnvId` keeps bot account ids and names of pools running side by side apart.
-- **Core seams:** on the forge core, mod-animus-forge fills in `CoreHooks` at load (sim sessions and groups that
-  never touch the database, reseeding random numbers for evaluation). On a stock core they do nothing: bots write
-  the few rows a logout and an instance bind write, and remove their binds again when they go.
-
-## Changing the curriculum
-
-A stage's layouts are what its models were trained on: a change to a block, a stage or the class/role profiles
-changes the manifests, and models exported before it are refused by `ModelLibrary`. Retrain in the forge after
-such a change, then export the models again. mod-animus-forge's README documents the stages, blocks, encounters
-and tuning in detail.
+[manual-7-9]: https://github.com/Moloch17/animus-forge/blob/master/docs/manual/07-operations.md#79-extending-the-curriculum
