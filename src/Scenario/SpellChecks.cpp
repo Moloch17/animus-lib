@@ -56,7 +56,18 @@ bool Animus::SpellChecks::CheckCast(Player* bot, SpellInfo const* info, SpellCas
     spell->LoadScripts();
     spell->InitExplicitTargets(targets);
 
-    SpellCastResult const result = spell->CheckCast(true);
+    // A strict check of a demon summon stuns the warlock's current pet (Summoning Disorientation, Spell::CheckCast):
+    // the core means it for a summon a player starts, and a mask checks every summon every decision. stage1_duel's
+    // demons were stunned for the whole of every fight, ignored every attack order and dealt no damage. Those are
+    // checked loosely, with the two strict-only checks a self-cast summon needs done here instead.
+    bool const stunsPet = info->HasEffect(SPELL_EFFECT_SUMMON_PET) && bot->IsClass(CLASS_WARLOCK, CLASS_CONTEXT_PET)
+        && bot->GetPet();
+    SpellCastResult result = spell->CheckCast(!stunsPet);
     delete spell;
+
+    if (stunsPet && result == SPELL_CAST_OK)
+        result = bot->GetGlobalCooldownMgr().HasGlobalCooldown(info) ? SPELL_FAILED_NOT_READY
+            : info->CheckShapeshift(bot->GetShapeshiftForm());
+
     return result == SPELL_CAST_OK;
 }
