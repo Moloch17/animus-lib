@@ -23,6 +23,7 @@
 #include "GauntletBlock.h"
 #include "PartyBlock.h"
 #include "PetBlock.h"
+#include "SharedDefines.h"
 #include "TravelBlock.h"
 #include <array>
 #include <optional>
@@ -36,6 +37,7 @@ namespace
     constexpr float HEAL_OWNER_BELOW = 0.7f;
     constexpr float HEAL_TEAMMATE_BELOW = 0.6f;
     constexpr float CLOSE_IN_BEYOND_YARDS = 4.0f;
+    constexpr float HOLD_RANGE_BEYOND_YARDS = 28.0f;    // ranged specs close to DuelBlock::MOVE_TO_RANGE_DISTANCE
     constexpr float MOUNT_BEYOND_YARDS = 80.0f;
     constexpr float CRUISE_HEIGHT_YARDS = 20.0f;
 
@@ -110,6 +112,17 @@ namespace
                 return send;
 
         return std::nullopt;
+    }
+
+    /// Whether the seat's spec fights from range (hunters, casters, healers), read from the core block's spec one-hot.
+    bool FightsFromRange(Row const& row, Layout const& layout)
+    {
+        std::vector<SpecProfile> const& specs = layout.Profile->Specs;
+        for (uint32 spec = 0; spec < specs.size() && spec < CoreBlock::MAX_SPECS; ++spec)
+            if (row.Obs(BlockId::Core, CoreBlock::OBS_SPEC_FIRST + spec) > 0.0f)
+                return specs[spec].Range != RangeBand::Melee;
+
+        return false;
     }
 
     std::optional<int32> Fight(Row const& row, Layout const& layout)
@@ -204,11 +217,44 @@ namespace
         if (std::optional<int32> pet = PetAction(row, layout))
             return pet;
 
+        float const yards = row.Obs(BlockId::Duel, DuelBlock::OBS_DISTANCE) * 60.0f;
+        bool const moving = row.Obs(BlockId::Duel, DuelBlock::OBS_BOT_MOVING) > 0.0f;
+        bool const inMelee = yards <= CLOSE_IN_BEYOND_YARDS;
+
+        if (FightsFromRange(row, layout))
+        {
+            if (hasTarget && !moving)
+            {
+                // To casting range from afar, and closer only when something is in the way.
+                if (yards > HOLD_RANGE_BEYOND_YARDS)
+                    if (std::optional<int32> move = row.Allowed(BlockId::Duel, DuelBlock::ACTION_MOVE_TO_RANGE))
+                        return move;
+
+                if (row.Obs(BlockId::Duel, DuelBlock::OBS_TARGET_IN_LINE_OF_SIGHT) == 0.0f)
+                    if (std::optional<int32> move = row.Allowed(BlockId::Duel, DuelBlock::ACTION_MOVE_TO_TARGET))
+                        return move;
+
+                // A hunter cannot shoot inside melee reach: with its pet on the target, it steps back out and lets
+                // the pet hold it. A caster casts where it stands.
+                if (layout.Profile->Class == CLASS_HUNTER && inMelee
+                    && row.Obs(BlockId::Duel, DuelBlock::OBS_TARGET_ATTACKS_BOT) > 0.0f
+                    && row.Obs(BlockId::Duel, DuelBlock::OBS_PET_ATTACKING) > 0.0f)
+                    if (std::optional<int32> back = row.Allowed(BlockId::Duel, DuelBlock::ACTION_BACK_OFF))
+                        return back;
+            }
+
+            // Melee only as the fallback once the target is on it: a hunter with no pet yet, or one still held.
+            if (inMelee)
+                if (std::optional<int32> attack = row.Allowed(BlockId::Duel, DuelBlock::ACTION_START_ATTACK))
+                    return attack;
+
+            return std::nullopt;
+        }
+
         if (std::optional<int32> attack = row.Allowed(BlockId::Duel, DuelBlock::ACTION_START_ATTACK))
             return attack;
 
-        if (hasTarget && row.Obs(BlockId::Duel, DuelBlock::OBS_DISTANCE) * 60.0f > CLOSE_IN_BEYOND_YARDS
-            && row.Obs(BlockId::Duel, DuelBlock::OBS_BOT_MOVING) == 0.0f)
+        if (hasTarget && !inMelee && !moving)
             if (std::optional<int32> move = row.Allowed(BlockId::Duel, DuelBlock::ACTION_MOVE_TO_TARGET))
                 return move;
 

@@ -72,6 +72,11 @@ namespace Animus::Curriculum
         uint32 UnreachableMs = 0;               // creature duel: time the opponent had no path to its victim
         uint32 UnreachableStreakMs = 0;         // ... without a break, up to now
         uint32 OpponentTeleports = 0;           // ... times it was put back beside its victim for it
+        // Style, over the time the fight was on with the bot alive (one-on-one arenas): how much of it the bot spent
+        // within melee reach of its opponent, and how much the opponent spent attacking the bot's pet or guardian.
+        uint32 FightMs = 0;
+        uint32 InMeleeMs = 0;
+        uint32 OnPetMs = 0;
     };
 
     /// One learned agent: its character, as built for the episode, and its episode totals.

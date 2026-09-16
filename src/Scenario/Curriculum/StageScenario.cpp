@@ -500,6 +500,23 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
         AgentStats const& stats = env.EpisodeStats[index];
         return stats.Damage ? float(stats.PetDamage) / float(stats.Damage) : 0.0f;
     });
+    // The seat's own damage by the game's damage class, as shares of all its damage (with pet_damage_share they add up
+    // to 1): melee swings and melee abilities, ranged weapon attacks, and spells.
+    _info.Add("melee_damage_share", [](Env const& env, uint32 index)
+    {
+        AgentStats const& stats = env.EpisodeStats[index];
+        return stats.Damage ? float(stats.MeleeDamage) / float(stats.Damage) : 0.0f;
+    });
+    _info.Add("shot_damage_share", [](Env const& env, uint32 index)
+    {
+        AgentStats const& stats = env.EpisodeStats[index];
+        return stats.Damage ? float(stats.ShotDamage) / float(stats.Damage) : 0.0f;
+    });
+    _info.Add("spell_damage_share", [](Env const& env, uint32 index)
+    {
+        AgentStats const& stats = env.EpisodeStats[index];
+        return stats.Damage ? float(stats.SpellDamage) / float(stats.Damage) : 0.0f;
+    });
     _info.Add("pet_died", [seat](Env const& env, uint32 index) { return seat(env, index).PetDied ? 1.0f : 0.0f; });
     _info.Add("pet_abilities", [seat](Env const& env, uint32 index)
     {
@@ -599,6 +616,18 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("target_teleports", [tally](Env const& env, uint32 index)
     {
         return float(tally(env, index).OpponentTeleports);
+    });
+    // Style over the fight (one-on-one arenas, the bot alive): the share of it spent within melee reach of the
+    // opponent, and the share the opponent spent attacking the seat's pet or guardian instead of the seat.
+    _info.Add("in_melee_share", [tally](Env const& env, uint32 index)
+    {
+        CombatTally const& combat = tally(env, index);
+        return combat.FightMs ? float(combat.InMeleeMs) / float(combat.FightMs) : 0.0f;
+    });
+    _info.Add("target_on_pet_share", [tally](Env const& env, uint32 index)
+    {
+        CombatTally const& combat = tally(env, index);
+        return combat.FightMs ? float(combat.OnPetMs) / float(combat.FightMs) : 0.0f;
     });
     _info.Add("actions_per_minute", [seat](Env const& env, uint32 index)
     {

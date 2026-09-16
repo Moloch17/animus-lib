@@ -282,7 +282,8 @@ void Animus::EnvPool::ApplyActions()
     _collect.ApplyNs = Since(mark);
 }
 
-void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uint32 damage, DamageEffectType type)
+void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uint32 damage, DamageEffectType type,
+    SpellInfo const* spell)
 {
     if (!attacker || !victim || !damage || (type != DIRECT_DAMAGE && type != SPELL_DIRECT_DAMAGE && type != DOT))
         return;
@@ -318,6 +319,14 @@ void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uin
     stats.Damage += damage;
     if (attacker->GetGUID() != itr->first)
         stats.PetDamage += damage;
+    // The agent's own, by damage class. A player's ranged auto-attack is a spell (Auto Shot, Shoot), so a white hit
+    // is a melee swing. Spell damage the hook could not match to its spell counts as a spell.
+    else if (type == DIRECT_DAMAGE || (spell && spell->DmgClass == SPELL_DAMAGE_CLASS_MELEE))
+        stats.MeleeDamage += damage;
+    else if (spell && spell->DmgClass == SPELL_DAMAGE_CLASS_RANGED)
+        stats.ShotDamage += damage;
+    else
+        stats.SpellDamage += damage;
 
     if (type == DIRECT_DAMAGE)
     {

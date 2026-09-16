@@ -172,6 +172,19 @@ void Animus::Curriculum::CombatReward::OneOnOne(StageScenario& scenario, Env con
         tally.EngageMs = env.EpisodeElapsedMs;
     }
 
+    // Style, measured only: where the bot fights from, and whether its pet holds the opponent. A hunter's shots
+    // cannot be used inside melee reach, so its time there is time it played melee.
+    if (tally.Engaged && bot->IsAlive() && opponent->IsAlive())
+    {
+        uint32 const decisionMs = scenario.DecisionMs();
+        tally.FightMs += decisionMs;
+        if (bot->IsWithinMeleeRange(opponent))
+            tally.InMeleeMs += decisionMs;
+        if (Unit const* victim = opponent->GetVictim(); victim && victim != bot
+            && victim->GetCharmerOrOwnerGUID() == bot->GetGUID())
+            tally.OnPetMs += decisionMs;
+    }
+
     if (!tally.Killed && !opponent->IsAlive())
     {
         tally.Killed = true;

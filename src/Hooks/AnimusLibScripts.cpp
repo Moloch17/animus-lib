@@ -29,17 +29,49 @@
  */
 namespace
 {
+    /// The spell whose damage this thread is about to deal. The core's DealDamage hook does not say which spell dealt
+    /// a hit, but spell damage runs ModifySpellDamageTaken (direct) or ModifyPeriodicDamageAurasTick (periodic) for
+    /// the same attacker and victim just before it, with nothing in between that deals damage from that attacker to
+    /// that victim. Only compared by address, never dereferenced as a unit.
+    struct PendingSpellDamage
+    {
+        Unit const* Attacker = nullptr;
+        Unit const* Victim = nullptr;
+        SpellInfo const* Spell = nullptr;
+    };
+
+    thread_local PendingSpellDamage Pending;
+
     class AnimusLibUnitScript : public UnitScript
     {
     public:
         AnimusLibUnitScript() : UnitScript("AnimusLibUnitScript") { }
 
+        void ModifySpellDamageTaken(Unit* target, Unit* attacker, int32& /*damage*/,
+            SpellInfo const* spellInfo) override
+        {
+            Pending = { attacker, target, spellInfo };
+        }
+
+        void ModifyPeriodicDamageAurasTick(Unit* target, Unit* attacker, uint32& /*damage*/,
+            SpellInfo const* spellInfo) override
+        {
+            Pending = { attacker, target, spellInfo };
+        }
+
         /// Called for every damage event, on map threads, before the victim's AI can change the
         /// amount (a creature script may rewrite it in DamageTaken), so it counts what was dealt.
         uint32 DealDamage(Unit* attacker, Unit* victim, uint32 damage, DamageEffectType type) override
         {
+            SpellInfo const* spell = nullptr;
+            if (type != DIRECT_DAMAGE && Pending.Attacker == attacker && Pending.Victim == victim)
+            {
+                spell = Pending.Spell;
+                Pending = {};
+            }
+
             for (Animus::EnvPool* pool : Animus::PoolRegistry::Pools())
-                pool->RecordDamage(attacker, victim, damage, type);
+                pool->RecordDamage(attacker, victim, damage, type, spell);
 
             return damage;
         }

@@ -45,6 +45,11 @@ namespace Animus
         uint64 WhiteDamage = 0;
         uint64 SpecialDamage = 0;
         uint64 PetDamage = 0;           // of Damage, what the agent's pets and guardians dealt
+        // The rest of Damage, the agent's own, by the game's damage class: melee swings and melee abilities (Raptor
+        // Strike, Sinister Strike), ranged weapon attacks (Auto Shot, Steady Shot, a wand), and spells (DoTs too).
+        uint64 MeleeDamage = 0;
+        uint64 ShotDamage = 0;
+        uint64 SpellDamage = 0;
         uint32 WhiteHits = 0;
         uint32 SpecialHits = 0;
         uint64 DamageTaken = 0;         // by the agent, from anything
@@ -69,6 +74,9 @@ namespace Animus
             WhiteDamage += other.WhiteDamage;
             SpecialDamage += other.SpecialDamage;
             PetDamage += other.PetDamage;
+            MeleeDamage += other.MeleeDamage;
+            ShotDamage += other.ShotDamage;
+            SpellDamage += other.SpellDamage;
             WhiteHits += other.WhiteHits;
             SpecialHits += other.SpecialHits;
             DamageTaken += other.DamageTaken;

@@ -26,6 +26,7 @@
 #include <vector>
 
 class Spell;
+class SpellInfo;
 class Unit;
 enum DamageEffectType : uint8;
 
@@ -92,8 +93,10 @@ namespace Animus
         [[nodiscard]] bool EvalOpponentsOnly() const { return _evalOpponentsOnly; }
 
         /// Damage hook, called from map worker threads. Only touches the stats of the env whose
-        /// instance the calling thread is updating.
-        void RecordDamage(Unit const* attacker, Unit const* victim, uint32 damage, DamageEffectType type);
+        /// instance the calling thread is updating. `spell` is the spell that dealt it, when the hook knows (null for
+        /// melee swings, and for spell damage it could not match).
+        void RecordDamage(Unit const* attacker, Unit const* victim, uint32 damage, DamageEffectType type,
+            SpellInfo const* spell);
 
         /// Heal hook, called from map threads with the health actually gained. Counts healing an agent
         /// (or its pets) does on its env's allies.
