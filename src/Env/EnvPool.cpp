@@ -27,6 +27,7 @@
 #include "StageSettings.h"
 #include "StringFormat.h"
 #include <chrono>
+#include <cmath>
 #include "Unit.h"
 #include <algorithm>
 
@@ -264,6 +265,13 @@ void Animus::EnvPool::SetEvaluation(bool enabled, uint32 seedBase, uint32 episod
     _evalOpponentsOnly = enabled && !_evalBaseline.empty() && opponentsOnly;
 }
 
+void Animus::EnvPool::SetReplay(uint32 seedBase, float fraction, std::vector<uint32> seeds)
+{
+    _replaySeedBase = seedBase;
+    _replayFraction = std::isfinite(fraction) ? std::clamp(fraction, 0.0f, 1.0f) : 0.0f;
+    _replaySeeds = std::move(seeds);
+}
+
 void Animus::EnvPool::ApplyActions()
 {
     auto mark = std::chrono::steady_clock::now();
@@ -333,22 +341,37 @@ void Animus::EnvPool::ResetEnv(Env& env)
     // An evaluation episode is built from its seed: the world thread's random numbers restart from it for
     // the reset (race, level, spec, talents, gear, opponents, spawn points) and go back to entropy afterwards.
     // Resets run on the world thread, and everything a scenario rolls there comes from those numbers.
+    auto const seedFor = [](uint32 base, uint32 index)
+    {
+        uint32 const seed = (base + 1) * 2654435761u ^ (index + 1) * 2246822519u;
+        return seed ? seed : 1;
+    };
+
     _envSeed[env.Index] = NO_EPISODE_SEED;
+    uint32 buildSeed = NO_EPISODE_SEED;
     if (_evaluating && _evalNextSeed < _evalEpisodes)
     {
         uint32 const index = _evalNextSeed++;
-        uint32 seed = (_evalSeedBase + 1) * 2654435761u ^ (index + 1) * 2246822519u;
-        CoreHooks::SeedRandom(seed ? seed : 1);
+        CoreHooks::SeedRandom(seedFor(_evalSeedBase, index));
         _envSeed[env.Index] = index;
+        buildSeed = index;
+    }
+    else if (!_evaluating && !_replaySeeds.empty() && _replayFraction > 0.0f && frand(0.0f, 1.0f) < _replayFraction)
+    {
+        // A lost evaluation episode, rebuilt as it was built then. It is still a training episode for the learner.
+        uint32 const index = _replaySeeds[urand(0, uint32(_replaySeeds.size()) - 1)];
+        CoreHooks::SeedRandom(seedFor(_replaySeedBase, index));
+        buildSeed = index;
+        ++_replayed;
     }
 
     // The scenario builds the episode knowing which seed it is: an evaluation spreads its seeds over the class/roles
-    // instead of drawing them, so each is scored on its own equal share.
-    env.EpisodeSeedIndex = _envSeed[env.Index];
+    // instead of drawing them, so each is scored on its own equal share (and a replay gets the class/role it had).
+    env.EpisodeSeedIndex = buildSeed;
 
     _scenario.Reset(env);
 
-    if (_envSeed[env.Index] != NO_EPISODE_SEED)
+    if (buildSeed != NO_EPISODE_SEED)
         CoreHooks::SeedRandom(0);
 
     // After the reset: tearing down the old character (a cast cut short, its pet's last hit) still reports

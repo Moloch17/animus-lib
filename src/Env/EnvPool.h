@@ -80,6 +80,14 @@ namespace Animus
         /// order; empty restores the even draw. Takes effect as envs reset; evaluation episodes are never weighted.
         void SetLayoutWeights(std::vector<float> const& weights) { _scenario.SetLayoutWeights(weights); }
 
+        /// Replaying lost evaluation episodes (the forge's REPLAY message): `fraction` of training resets rebuild one
+        /// of `seeds` -- evaluation seed indexes of `seedBase` -- from the very random numbers the evaluation built it
+        /// from, so the same character meets the same opponent; the fight itself rolls afresh. Replaces the seeds
+        /// before; no seeds or a fraction of 0 stops it. Evaluation episodes are never replays, and a replay reports
+        /// as a training episode (NO_EPISODE_SEED).
+        void SetReplay(uint32 seedBase, float fraction, std::vector<uint32> seeds);
+        [[nodiscard]] uint64 ReplayedEpisodes() const { return _replayed; }
+
         [[nodiscard]] std::string const& EvalBaseline() const { return _evalBaseline; }
         [[nodiscard]] bool EvalOpponentsOnly() const { return _evalOpponentsOnly; }
 
@@ -187,6 +195,11 @@ namespace Animus
         std::string _evalBaseline;
         bool _evalOpponentsOnly = false;
         std::vector<uint32> _envSeed;           // per env: seed index of the running episode
+
+        uint32 _replaySeedBase = 0;
+        float _replayFraction = 0.0f;
+        std::vector<uint32> _replaySeeds;
+        uint64 _replayed = 0;                   // training resets that rebuilt a replay seed
 
         CollectTiming _collect;
 

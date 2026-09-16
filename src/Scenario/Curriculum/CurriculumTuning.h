@@ -80,8 +80,12 @@ namespace Animus::Curriculum
                                                 // a feral druid's Pounce or Ravage out of Prowl)
             float StealthUtility = 0.05f;       // one that keeps it (Sap, Distract), once per target per stealth
             float StepCost = 0.0002f;           // per decision
-            float Kill = 3.0f;
-            float FastKill = 3.0f;              // times the fraction of the episode length left, from the engagement
+            /// Winning is what the stage is for, so the kill and the losses dwarf the rest. With Kill 3, FastKill up to
+            /// 3 and a loss at -3, a risky fast opener (time bonus ~2.4) beat a sure slow win (~0.6) as soon as it won
+            /// 79% of the time: the reward traded one fight in five for speed. At Kill 10, FastKill 1 and a loss at
+            /// -10, that break-even is ~97%. The dense terms (damage, approach) stay small, as guidance.
+            float Kill = 10.0f;
+            float FastKill = 1.0f;              // times the fraction of the episode length left, from the engagement
             /// Times the fraction of the bot's health not lost. Damage taken is already charged as it happens
             /// (DamageTaken, dense), so this pays for the same thing again at the kill; together they were
             /// worth three times the damage dealt term, which reads as "survive" more than "win". stage1_duel
@@ -90,13 +94,13 @@ namespace Animus::Curriculum
             /// in health it never spent. Halved, against a larger Kill, so that winning the fight outweighs
             /// finishing it untouched -- deaths were 0.002 an episode, so there is room to push.
             float HealthKept = 0.5f;
-            float Death = 3.0f;
+            float Death = 10.0f;
             /// A creature duel that runs out the clock without a kill (and without a death, which Death already
             /// charges). The duel is won by killing, so a timeout is a lost fight and ends the episode as one, not
             /// a cut-off the critic bootstraps across: without it the cheapest fight to lose was the one never
             /// started (stage1_duel at 30M: none of the 11 failed warlock episodes took any damage). As Death, so
             /// neither way of losing is the cheaper one to learn.
-            float Timeout = 3.0f;
+            float Timeout = 10.0f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
             float RangedRange = 25.0f;          // ... ranged specs
         } Duel;
