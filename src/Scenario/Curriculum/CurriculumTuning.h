@@ -77,12 +77,16 @@ namespace Animus::Curriculum
                                                 // a feral druid's Pounce or Ravage out of Prowl)
             float StealthUtility = 0.05f;       // one that keeps it (Sap, Distract), once per target per stealth
             float StepCost = 0.0002f;           // per decision
-            float Kill = 2.0f;
+            float Kill = 3.0f;
             float FastKill = 3.0f;              // times the fraction of the episode length left, from the engagement
             /// Times the fraction of the bot's health not lost. Damage taken is already charged as it happens
             /// (DamageTaken, dense), so this pays for the same thing again at the kill; together they were
-            /// worth three times the damage dealt term, which reads as "survive" more than "win".
-            float HealthKept = 1.0f;
+            /// worth three times the damage dealt term, which reads as "survive" more than "win". stage1_duel
+            /// bore that out: the policy beat the baseline on score everywhere while killing less often than it
+            /// did as a rogue (0.87 against 0.94) and below level 20 (0.78 against 0.83), banking the difference
+            /// in health it never spent. Halved, against a larger Kill, so that winning the fight outweighs
+            /// finishing it untouched -- deaths were 0.002 an episode, so there is room to push.
+            float HealthKept = 0.5f;
             float Death = 3.0f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
             float RangedRange = 25.0f;          // ... ranged specs
@@ -98,6 +102,14 @@ namespace Animus::Curriculum
             /// is what it does, which damage, healing and the kill already pay for. TimeWasted still charges
             /// for the failure this was meant to balance.
             float TimeCompleted = 0.0f;
+            /// Per cast the bot cut short itself, whatever it had spent on it. TimeWasted is proportional to the
+            /// seconds lost, so a cast stopped on the decision after it began costs almost nothing: under a
+            /// deterministic policy that leaves start-cast / stop-cast a free loop to sit in for a whole episode
+            /// (stage1_duel: a quarter of the warlock evaluation episodes, up to 299 cancels in one). A flat charge
+            /// prices the loop -- hundreds of them outweigh anything an episode can pay -- while leaving the
+            /// handful of deliberate stops a fight actually wants cheap next to the kill, so when to cut a cast
+            /// short stays the policy's call.
+            float Cancel = 0.05f;
         } Casting;
 
         /// Packs and the gauntlet's pull after pull.
@@ -283,6 +295,7 @@ namespace Animus::Curriculum
 
             f("Casting.TimeWasted", tuning.Casting.TimeWasted);
             f("Casting.TimeCompleted", tuning.Casting.TimeCompleted);
+            f("Casting.Cancel", tuning.Casting.Cancel);
 
             f("Pulls.LinkedChance", tuning.Pulls.LinkedChance);
             f("Pulls.EliteChance", tuning.Pulls.EliteChance);

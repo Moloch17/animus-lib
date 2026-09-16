@@ -453,10 +453,14 @@ void Animus::EnvPool::RecordCastCancelled(Unit const* caster, Spell* spell, bool
     stats.CastMsWasted += uint32(spent);
 
     Unit const* target = spell->m_targets.GetUnitTarget();
-    if (bySelf)
-        ++stats.CastsStopped;
-    else if (caster->IsAlive() && !caster->movespline->Finalized())
+    // Moving is checked before bySelf: a cast the bot walked out of is cancelled by the caster too, so testing
+    // bySelf first sent every move-cancel to CastsStopped and left CastsMoved dead (0 over a whole stage1_duel
+    // run). Movement is the more specific cause, and telling the two apart is what says whether the policy is
+    // stopping casts on purpose or running out of them.
+    if (caster->IsAlive() && !caster->movespline->Finalized())
         ++stats.CastsMoved;
+    else if (bySelf)
+        ++stats.CastsStopped;
     else if (spell->m_targets.GetObjectTargetGUID() && (!target || !target->IsAlive() || !target->IsInWorld()))
         ++stats.CastsTargetLost;
     else

@@ -104,7 +104,12 @@ void Animus::Curriculum::CombatReward::Casting(Player* bot, AgentStats const& st
     tally.CastsOther += step.CastsOther;
 
     // Neither forces anything: cutting a cast short stays the policy's call when something else is worth more.
-    float reward = -tuning.TimeWasted * float(step.CastMsWasted) / 1000.0f;
+    // Cancels the bot brought on itself -- the stop-casting action, or moving out of its own cast -- also pay a
+    // flat charge, so that stopping a cast the decision after starting it is not free of the seconds it never
+    // spent. An enemy interrupt is not the bot's doing and is not charged.
+    uint32 const selfCancelled = step.CastsStopped + step.CastsMoved;
+    float reward = -tuning.TimeWasted * float(step.CastMsWasted) / 1000.0f
+        - tuning.Cancel * float(selfCancelled);
 
     // Only in combat, so casting long spells at nothing is not a way to earn it.
     if (bot->IsInCombat())
