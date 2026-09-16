@@ -392,6 +392,11 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
 
     LOG_DEBUG("module.animus", "Class {}: {} actions, {} tactical, {} sustain, {} revives, from {} candidate spells",
         playerClass, _actions.size(), _tactical.size(), _sustain.size(), _revives.size(), candidates.size());
+
+    // Number the actions of every list, so a seat can key a table by action without searching for it.
+    for (std::vector<Action>* list : { &_actions, &_tactical, &_sustain, &_revives })
+        for (uint32 index = 0; index < list->size(); ++index)
+            (*list)[index].Index = index;
 }
 
 bool Animus::Curriculum::ActionCatalog::IsTacticalSpell(SpellInfo const* info)

@@ -56,6 +56,9 @@ namespace Animus::Curriculum
             uint32 FirstRank = 0;       // Spell: first spell of the rank chain
             uint8 EquipmentSlot = 0;    // Trinket: EQUIPMENT_SLOT_TRINKET1/2
             bool NextSwing = false;
+            /// Its own position in the list it belongs to, so a per-seat table can be keyed by action. Filled
+            /// after the lists are built; the brace initialisers above it are positional.
+            uint32 Index = 0;
         };
 
         ActionCatalog(uint8 playerClass, ClassKit const& kit, TalentBuilder const& talents);

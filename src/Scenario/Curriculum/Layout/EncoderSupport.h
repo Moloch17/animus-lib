@@ -60,6 +60,10 @@ namespace Animus::Curriculum::Encoding
     void Heal(Player* bot, ActionCatalog::Action const& heal, Unit* ally, SeatActionResult& result);
 
     /// Whether a spell action of the catalog could be cast at `target` now.
+    /// The highest rank of `def` the seat's bot knows: from the view's per-episode table when it has one, else
+    /// resolved by walking the chain. Every seat of a curriculum scenario has the table.
+    [[nodiscard]] SpellInfo const* KnownRank(SeatView const& view, ActionCatalog::Action const& def);
+
     [[nodiscard]] bool IsSpellActionAllowed(SeatView const& view, Unit* target, ActionCatalog::Action const& def);
 
     /// Cast a spell action at `target` as CMSG_CAST_SPELL would. Returns true if it started.

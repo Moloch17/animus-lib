@@ -213,7 +213,7 @@ void Animus::Curriculum::CoreBlock::Observe(SeatView const& view, float* obs, ui
     {
         SpellInfo const* info = nullptr;
         if (actions[action].Type == ActionCatalog::Kind::Spell)
-            info = ActionCatalog::KnownRank(bot, actions[action].FirstRank);
+            info = Encoding::KnownRank(view, actions[action]);
         else if (actions[action].Type == ActionCatalog::Kind::Trinket)
             info = Encoding::TrinketSpell(bot->GetItemByPos(INVENTORY_SLOT_BAG_0, actions[action].EquipmentSlot));
 

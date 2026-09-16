@@ -26,8 +26,10 @@
 #include "Supplies.h"
 #include "TalentBuilder.h"
 #include <array>
+#include <vector>
 
 class Player;
+class SpellInfo;
 class Unit;
 
 namespace Animus::Curriculum
@@ -48,6 +50,10 @@ namespace Animus::Curriculum
         bool TargetSeen = false;                    // LastSeen holds where the target was when the bot last saw it
         Position LastSeen;
         float TargetUnseenTime = 0.0f;              // time since the bot last saw the target / 20 s, clamped
+
+        /// Per catalog action, the highest rank the bot knows (SeatState::KnownRanks); null for a view built
+        /// without one, where Encoding::KnownRank resolves the chain itself.
+        std::vector<SpellInfo const*> const* KnownRanks = nullptr;
 
         // Core: the character, as built, and what happened since the last decision.
         uint8 Level = 1;

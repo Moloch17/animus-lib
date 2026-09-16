@@ -126,12 +126,20 @@ namespace Animus::Curriculum::Encoding
         }
     }
 
+    SpellInfo const* KnownRank(SeatView const& view, ActionCatalog::Action const& def)
+    {
+        if (view.KnownRanks && def.Index < view.KnownRanks->size())
+            return (*view.KnownRanks)[def.Index];
+
+        return ActionCatalog::KnownRank(view.Bot, def.FirstRank);
+    }
+
     bool IsSpellActionAllowed(SeatView const& view, Unit* target, ActionCatalog::Action const& def)
     {
         Player* bot = view.Bot;
 
         // Cheap rejections before the full cast check.
-        SpellInfo const* info = ActionCatalog::KnownRank(bot, def.FirstRank);
+        SpellInfo const* info = KnownRank(view, def);
         if (!info || !bot->HasActiveSpell(info->Id) || bot->HasSpellCooldown(info->Id) || CastInProgress(bot))
             return false;
 
@@ -157,7 +165,7 @@ namespace Animus::Curriculum::Encoding
         if (def.NextSwing && bot->GetCurrentSpell(CURRENT_MELEE_SPELL))
             return false;
 
-        SpellInfo const* info = ActionCatalog::KnownRank(bot, def.FirstRank);
+        SpellInfo const* info = KnownRank(view, def);
         if (!info || !bot->HasActiveSpell(info->Id) || CastInProgress(bot))
             return false;
 

@@ -806,6 +806,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
         TalentBuilder::Build Build;
         uint32 UnspentTalentPoints;
         uint32 EquippedItems;
+        std::vector<SpellInfo const*> KnownRanks;
     };
 
     uint32 const previousActiveSeats = data.ActiveSeats;
@@ -814,7 +815,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
     {
         SeatState const& s = data.Seats[seat];
         previous[seat] = { s.L, s.Race, s.Level, s.Spec, s.TalentPlan, s.DamageScale, s.Build, s.UnspentTalentPoints,
-            s.EquippedItems };
+            s.EquippedItems, s.KnownRanks };
     }
 
     // How many seats play this episode, and their class/roles: the arena's seats, except in a party, which has 1-4
@@ -901,6 +902,8 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
                 s.Build = c.Build;
                 s.UnspentTalentPoints = c.UnspentTalentPoints;
                 s.EquippedItems = c.EquippedItems;
+                // A character that stays keeps the ranks resolved for it, not the aborted build's.
+                s.KnownRanks = c.KnownRanks;
             }
 
             data.ActiveSeats = previousActiveSeats;
@@ -984,6 +987,15 @@ void Animus::Curriculum::StageScenario::Configure(Player* bot, SeatState& seat, 
     seat.Build = built.Build;
     seat.UnspentTalentPoints = built.UnspentTalentPoints;
     seat.EquippedItems = built.EquippedItems;
+
+    // The character's spellbook is final now, so resolve every catalog action's highest known rank once. The
+    // encoders ask for it three times per action per decision (observation, mask, and applying the action),
+    // and each ask walked the rank chain; nothing an episode does changes what the bot knows.
+    std::vector<ActionCatalog::Action> const& actions = seat.L->Catalog().Actions();
+    seat.KnownRanks.assign(actions.size(), nullptr);
+    for (ActionCatalog::Action const& action : actions)
+        if (action.Type == ActionCatalog::Kind::Spell)
+            seat.KnownRanks[action.Index] = ActionCatalog::KnownRank(bot, action.FirstRank);
 }
 
 void Animus::Curriculum::StageScenario::PrepareFighter(Player* bot, SeatState& seat) const
@@ -1122,6 +1134,7 @@ Animus::Curriculum::SeatView Animus::Curriculum::StageScenario::ViewSeat(Env con
     view.Race = seat.Race;
     view.Spec = seat.Spec;
     view.Build = &seat.Build;
+    view.KnownRanks = &seat.KnownRanks;
     view.LastStepDamage = seat.LastStepDamage;
     view.LastStepPowerDelta = seat.LastStepPowerDelta;
     view.LastStepDamageTaken = seat.LastStepDamageTaken;

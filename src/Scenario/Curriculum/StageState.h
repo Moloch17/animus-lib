@@ -34,6 +34,8 @@
  * The state every curriculum stage has: the seats' characters and their episode totals. What only some stages have
  * (pulls, the owner, the party group, the enemy player) is kept by the encounter that needs it.
  */
+class SpellInfo;
+
 namespace Animus::Curriculum
 {
     struct Layout;
@@ -81,6 +83,11 @@ namespace Animus::Curriculum
         uint32 EquippedItems = 0;
         float DamageScale = 1.0f;
         std::vector<uint32> Stable;             // hunters: beasts offered this episode
+
+        /// The highest rank of every catalog action the bot knows, resolved once when the character is built:
+        /// walking the rank chain per action per decision is most of what observing a seat costs, and the
+        /// spellbook does not change inside an episode. Empty until the seat has a character.
+        std::vector<SpellInfo const*> KnownRanks;
 
         uint32 LastPower = 0;
         float LastStepDamage = 0.0f;
