@@ -1138,6 +1138,7 @@ Animus::Curriculum::SeatView Animus::Curriculum::StageScenario::ViewSeat(Env con
     view.LastStepDamage = seat.LastStepDamage;
     view.LastStepPowerDelta = seat.LastStepPowerDelta;
     view.LastStepDamageTaken = seat.LastStepDamageTaken;
+    view.EpisodeTime = std::min(1.0f, float(env.EpisodeElapsedMs) / EPISODE_TIME_SCALE_MS);
     view.CombatTime = seat.InCombat
         ? std::min(1.0f, float(env.EpisodeElapsedMs - seat.CombatStartMs) / MAX_COMBAT_TIME_MS) : 0.0f;
     view.Supplies = seat.Supplies;

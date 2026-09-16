@@ -63,6 +63,7 @@ namespace Animus::Curriculum
         float LastStepDamage = 0.0f;                // damage done / the level's damage scale
         float LastStepPowerDelta = 0.0f;            // primary power change, as a fraction of max
         float LastStepDamageTaken = 0.0f;           // / the bot's max health
+        float EpisodeTime = 0.0f;                   // time into the episode / EPISODE_TIME_SCALE_MS, clamped
 
         // Duel: time in combat, what the bot brought (potions, bandages, stones), whether it may resurrect itself, and
         // a hunter's beasts on offer.

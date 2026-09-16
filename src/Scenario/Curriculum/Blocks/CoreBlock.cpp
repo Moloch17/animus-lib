@@ -207,6 +207,7 @@ void Animus::Curriculum::CoreBlock::Observe(SeatView const& view, float* obs, ui
     obs[OBS_ARMOR_PENETRATION] = bot->GetRatingBonusValue(CR_ARMOR_PENETRATION) / 100.0f;
     obs[OBS_LAST_STEP_DAMAGE] = view.LastStepDamage;
     obs[OBS_LAST_STEP_POWER_DELTA] = view.LastStepPowerDelta;
+    obs[OBS_EPISODE_TIME] = view.EpisodeTime;
 
     std::vector<ActionCatalog::Action> const& actions = view.L->Catalog().Actions();
     for (uint32 action = 0; action < actions.size(); ++action)

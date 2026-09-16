@@ -63,6 +63,10 @@ namespace Animus::Curriculum
     constexpr uint32 PARTY_MEMBERS = 3;     // a party seat's teammates
     constexpr uint32 PACK_SLOTS = 4;        // enemies observed
     constexpr uint32 STABLE_SLOTS = 4;      // a hunter's stabled beasts
+    /// The episode clock's scale: the longest arena's episode, so it rises through every episode instead of
+    /// saturating. Elapsed time, not the fraction of an episode's own limit: a companion has no limit, and the
+    /// critic already sees the fraction (StageScenario::STATE_EPISODE_TIME).
+    constexpr float EPISODE_TIME_SCALE_MS = 300000.0f;
 
     [[nodiscard]] std::string_view BlockName(BlockId id);
     [[nodiscard]] std::optional<BlockId> FindBlock(std::string_view name);

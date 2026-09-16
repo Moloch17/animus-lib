@@ -63,7 +63,11 @@ namespace Animus::Curriculum
             OBS_ARMOR_PENETRATION       = 58,   // rating bonus percent / 100
             OBS_LAST_STEP_DAMAGE        = 59,   // damage since the last decision / damage scale
             OBS_LAST_STEP_POWER_DELTA   = 60,   // primary power change since the last decision, as a fraction
-            OBS_GLOBAL_COUNT            = 61
+            /// Time into the episode / 5 min, clamped. Without it a bot that stands still out of combat sees the
+            /// same rows over and over, and a deterministic policy cycles through the same decisions for good:
+            /// stage1_duel evaluation had warlocks start and stop one cast 299 times, 0 damage, on six seeds.
+            OBS_EPISODE_TIME            = 61,
+            OBS_GLOBAL_COUNT            = 62
 
             // Then, per catalog action: ACTION_FEATURES features (known, cooldown, aura on target, aura on self,
             // stacks). Then per talent of the class: rank / max rank. Then per tree: points / 71.
