@@ -107,6 +107,11 @@ namespace Animus
         std::vector<ObjectGuid> Targets;
         std::vector<ObjectGuid> Allies;     // scripted friendly players the agents fight for (not agents)
 
+        /// The seed index of the episode being built or played when it is an evaluation episode, so a scenario can
+        /// spread the seeds evenly over what it would otherwise draw at random (its class/roles). EnvPool sets it
+        /// before Scenario::Reset; NO_EPISODE_SEED (EnvPool.h) for a training episode.
+        uint32 EpisodeSeedIndex = 0xFFFFFFFF;
+
         uint32 EpisodeElapsedMs = 0;
         uint32 EpisodeLengthMs = 0;
         uint32 EpisodesCompleted = 0;

@@ -26,6 +26,7 @@
 #include "EncoderSupport.h"
 #include "Encounters.h"
 #include "Env.h"
+#include "EnvPool.h"
 #include "Log.h"
 #include "Map.h"
 #include "Opponents.h"
@@ -36,6 +37,7 @@
 #include "SpawnArea.h"
 #include "SpellChecks.h"
 #include "StageDefinition.h"
+#include <cmath>
 #include "StringFormat.h"
 #include "Supplies.h"
 #include <boost/json/array.hpp>
@@ -606,19 +608,93 @@ Player* Animus::Curriculum::StageScenario::PartyTank(Env const& env) const
     return _party && Arena(env).PartyGroup ? _party->Tank(env) : nullptr;
 }
 
-Animus::Curriculum::Layout const& Animus::Curriculum::StageScenario::PickLayout(Role role) const
+std::vector<Animus::Curriculum::Layout const*> Animus::Curriculum::StageScenario::LayoutCandidates(
+    std::optional<Role> role) const
 {
     // A class/role of the role if the run has one; any otherwise (StageSettings::ClassRoles may leave roles out).
     std::vector<Layout const*> candidates;
-    for (Layout const& layout : _layouts)
-        if (layout.PlayRole() == role)
-            candidates.push_back(&layout);
+    if (role)
+        for (Layout const& layout : _layouts)
+            if (layout.PlayRole() == *role)
+                candidates.push_back(&layout);
 
     if (candidates.empty())
         for (Layout const& layout : _layouts)
             candidates.push_back(&layout);
 
-    return *candidates[urand(0, uint32(candidates.size()) - 1)];
+    return candidates;
+}
+
+Animus::Curriculum::Layout const& Animus::Curriculum::StageScenario::DrawLayout(Env const& env, uint32 seat,
+    std::optional<Role> role) const
+{
+    std::vector<Layout const*> const candidates = LayoutCandidates(role);
+
+    // An evaluation spreads its seeds over the class/roles instead of drawing them: seed i plays candidate
+    // (i + seat) % count. Every class/role is then scored on an equal share of the seeds, whatever the env count,
+    // so its score is as well measured as the run's and two checkpoints meet the same characters.
+    if (env.EpisodeSeedIndex != NO_EPISODE_SEED)
+        return *candidates[(env.EpisodeSeedIndex + seat) % candidates.size()];
+
+    // Training: the learner's weights (the forge's WEIGHTS message), so the class/roles furthest below their
+    // baseline get more of the data. Without them, or when none of the candidates carries one, draw evenly.
+    float total = 0.0f;
+    for (Layout const* layout : candidates)
+        total += Weight(*layout);
+
+    if (total <= 0.0f)
+        return *candidates[urand(0, uint32(candidates.size()) - 1)];
+
+    float roll = frand(0.0f, total);
+    for (Layout const* layout : candidates)
+    {
+        roll -= Weight(*layout);
+        if (roll <= 0.0f)
+            return *layout;
+    }
+
+    return *candidates.back();
+}
+
+float Animus::Curriculum::StageScenario::Weight(Layout const& layout) const
+{
+    return layout.Index < _layoutWeights.size() ? _layoutWeights[layout.Index] : 1.0f;
+}
+
+void Animus::Curriculum::StageScenario::SetLayoutWeights(std::vector<float> const& weights)
+{
+    if (weights.empty())
+    {
+        _layoutWeights.clear();
+        return;
+    }
+
+    if (weights.size() != _layouts.size())
+    {
+        LOG_ERROR("module.animus", "{}: {} layout weights for {} layouts; keeping the ones in use", Name(),
+            weights.size(), _layouts.size());
+        return;
+    }
+
+    float total = 0.0f;
+    for (float weight : weights)
+    {
+        if (!std::isfinite(weight) || weight < 0.0f)
+        {
+            LOG_ERROR("module.animus", "{}: layout weights must be finite and not negative; keeping the ones in use",
+                Name());
+            return;
+        }
+        total += weight;
+    }
+
+    if (total <= 0.0f)
+    {
+        LOG_ERROR("module.animus", "{}: layout weights are all zero; keeping the ones in use", Name());
+        return;
+    }
+
+    _layoutWeights = weights;
 }
 
 bool Animus::Curriculum::StageScenario::IsTerminal(Env const& env) const
@@ -740,13 +816,14 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
                 role = RollRole(_tuning.Party.RoleTankChance, _tuning.Party.RoleHealerChance);
 
         for (uint32 seat = 0; seat < _seatCount; ++seat)
-            data.Seats[seat].L = seat < data.ActiveSeats ? &PickLayout(roles[seat]) : nullptr;
+            data.Seats[seat].L = seat < data.ActiveSeats ? &DrawLayout(env, seat, roles[seat]) : nullptr;
     }
     else
     {
-        // Any class/role of the run, each equally likely.
+        // Any class/role of the run: drawn (evenly, or by the learner's weights), or spread over the seeds in an
+        // evaluation.
         for (uint32 seat = 0; seat < _seatCount; ++seat)
-            data.Seats[seat].L = seat < data.ActiveSeats ? &_layouts[urand(0, uint32(_layouts.size()) - 1)] : nullptr;
+            data.Seats[seat].L = seat < data.ActiveSeats ? &DrawLayout(env, seat, std::nullopt) : nullptr;
     }
 
     // One level every seat's class/role can be.

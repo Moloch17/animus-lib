@@ -115,6 +115,12 @@ namespace Animus
         virtual bool ScriptedAction(std::string const& policy, float const* obs, uint8 const* mask, uint16 layout,
             int32& action) const = 0;
 
+        /// How often training episodes should draw each layout of Spec().Layouts, in layout order (the learner's
+        /// WEIGHTS message). Weights are relative, so all-ones is the even draw a scenario starts with; an empty
+        /// vector restores it. Evaluation episodes are unaffected: they spread their seeds over the layouts evenly.
+        /// Scenarios that have one layout, or draw none, need not implement it.
+        virtual void SetLayoutWeights(std::vector<float> const& /*weights*/) { }
+
         /// Once at shutdown: remove bots (without saving) and targets.
         virtual void Teardown(Env& env) = 0;
     };

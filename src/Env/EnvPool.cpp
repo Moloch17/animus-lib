@@ -311,6 +311,10 @@ void Animus::EnvPool::ResetEnv(Env& env)
         _envSeed[env.Index] = index;
     }
 
+    // The scenario builds the episode knowing which seed it is: an evaluation spreads its seeds over the class/roles
+    // instead of drawing them, so each is scored on its own equal share.
+    env.EpisodeSeedIndex = _envSeed[env.Index];
+
     _scenario.Reset(env);
 
     if (_envSeed[env.Index] != NO_EPISODE_SEED)

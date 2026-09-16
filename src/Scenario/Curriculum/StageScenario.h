@@ -29,6 +29,7 @@
 #include "StageSettings.h"
 #include "StageState.h"
 #include <memory>
+#include <optional>
 
 namespace Animus::Curriculum
 {
@@ -123,6 +124,7 @@ namespace Animus::Curriculum
         [[nodiscard]] std::vector<std::string> EpisodeInfoNames() const override { return _info.Names(); }
         bool ScriptedAction(std::string const& policy, float const* obs, uint8 const* mask, uint16 layout,
             int32& action) const override;
+        void SetLayoutWeights(std::vector<float> const& weights) override;
         void Teardown(Env& env) override;
 
         // For the encounters.
@@ -181,7 +183,16 @@ namespace Animus::Curriculum
         [[nodiscard]] bool SeatCanResurrect(Env const& env, uint32 seat) const;
 
     private:
-        [[nodiscard]] Layout const& PickLayout(Role role) const;
+        /// The layouts a seat may play: those of `role`, or every layout of the run when it has none of that role
+        /// (StageSettings::ClassRoles may leave roles out). No role: every layout of the run.
+        [[nodiscard]] std::vector<Layout const*> LayoutCandidates(std::optional<Role> role) const;
+
+        /// The class/role `seat` plays this episode. An evaluation episode takes its layout from its seed index, so
+        /// the seeds spread evenly over the class/roles; a training episode draws one, weighted by SetLayoutWeights.
+        [[nodiscard]] Layout const& DrawLayout(Env const& env, uint32 seat, std::optional<Role> role) const;
+
+        /// How often a training episode draws `layout`, relative to the others; 1 without weights.
+        [[nodiscard]] float Weight(Layout const& layout) const;
         void AddCoreEpisodeInfo();
         void WriteStageFiles(StageSettings const& settings) const;
 
@@ -222,6 +233,9 @@ namespace Animus::Curriculum
         float _decisionScale = 1.0f;
 
         std::vector<Layout> _layouts;
+
+        /// Per layout, how often a training episode draws it (the learner's WEIGHTS message); empty = evenly.
+        std::vector<float> _layoutWeights;
         ScenarioSpec _spec;
         EpisodeInfoTable _info;
         std::vector<EnvState> _data;

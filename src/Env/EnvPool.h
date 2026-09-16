@@ -75,6 +75,11 @@ namespace Animus
         void SetEvaluation(bool enabled, uint32 seedBase, uint32 episodes, std::string const& baseline,
             bool opponentsOnly = false);
         [[nodiscard]] bool IsEvaluating() const { return _evaluating; }
+
+        /// How often training episodes draw each of the scenario's layouts (the forge's WEIGHTS message), in layout
+        /// order; empty restores the even draw. Takes effect as envs reset; evaluation episodes are never weighted.
+        void SetLayoutWeights(std::vector<float> const& weights) { _scenario.SetLayoutWeights(weights); }
+
         [[nodiscard]] std::string const& EvalBaseline() const { return _evalBaseline; }
         [[nodiscard]] bool EvalOpponentsOnly() const { return _evalOpponentsOnly; }
 
