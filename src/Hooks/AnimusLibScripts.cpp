@@ -21,6 +21,7 @@
 #include "EnvPool.h"
 #include "PoolRegistry.h"
 #include "SummonLevel.h"
+#include "Unit.h"
 #include "UnitScript.h"
 
 /*
