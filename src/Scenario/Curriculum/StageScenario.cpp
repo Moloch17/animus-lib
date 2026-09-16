@@ -245,7 +245,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     if (_stage.AnyArena(hasPulls))
         pulls = add(std::make_unique<PullsEncounter>(*this, envs));
     if (_stage.AnyArena(hasCreature))
-        creature = add(std::make_unique<CreatureEncounter>(*this));
+        creature = add(std::make_unique<CreatureEncounter>(*this, envs));
     // After the owner and the pulls: ambushers find the owner and take the slots the pull leaves.
     if (_stage.AnyArena(hasAmbush))
         ambush = add(std::make_unique<AmbushEncounter>(*this, envs));
@@ -1341,6 +1341,8 @@ Animus::Curriculum::SeatView Animus::Curriculum::StageScenario::ViewSeat(Env con
     view.Spec = seat.Spec;
     view.Build = &seat.Build;
     view.KnownRanks = &seat.KnownRanks;
+    view.Memory = &seat.Memory;
+    view.NowMs = env.EpisodeElapsedMs;
     view.LastStepDamage = seat.LastStepDamage;
     view.LastStepPowerDelta = seat.LastStepPowerDelta;
     view.LastStepDamageTaken = seat.LastStepDamageTaken;
@@ -1423,7 +1425,7 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     SeatActionResult result;
     SeatEncoder::Apply(view, action, result);
     if (action > 0)
-        Press(env, seat, uint32(action));
+        Press(env, seat, bot, uint32(action));
 
     seat.TargetSlot = view.TargetSlot;
     seat.SpellCasts += result.SpellCasts;
@@ -1508,7 +1510,9 @@ void Animus::Curriculum::StageScenario::ObserveSeat(Env& env, uint32 seatIndex, 
     seat.InCombat = inCombat;
 
     TrackTarget(env, seat, bot, target);
-    TrackCast(env, seat, bot);
+    if (seat.Memory.Actions() != seat.L->NumActions)
+        seat.Memory.Reset(seat.L->NumActions);
+    seat.Memory.Observe(bot, target, env.EpisodeElapsedMs);
     SeatEncoder::Observe(ViewSeat(env, seatIndex, bot, target), obs, mask);
 
     if (mask)
@@ -1517,40 +1521,12 @@ void Animus::Curriculum::StageScenario::ObserveSeat(Env& env, uint32 seatIndex, 
                 mask[action] = 0;
 }
 
-void Animus::Curriculum::StageScenario::TrackCast(Env const& env, SeatState& seat, Player* bot)
-{
-    uint32 spellId = 0;
-    if (bot && bot->IsAlive())
-    {
-        if (Spell const* cast = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
-            cast && cast->getState() == SPELL_STATE_PREPARING)
-            spellId = cast->m_spellInfo->Id;
-        else if (Spell const* channel = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
-            channel && channel->getState() == SPELL_STATE_CASTING)
-            spellId = channel->m_spellInfo->Id;
-    }
-
-    if (spellId != seat.CastSpellId)
-    {
-        seat.CastSpellId = spellId;
-        seat.CastStartMs = env.EpisodeElapsedMs;
-    }
-}
-
 bool Animus::Curriculum::StageScenario::Paced(Env const& env, SeatState const& seat, uint32 action) const
 {
-    uint32 const now = env.EpisodeElapsedMs;
-    if (action < seat.ActionReadyMs.size() && now < seat.ActionReadyMs[action])
-        return true;
-
-    // A player stops a cast for something it saw happen, which takes longer than a decision.
-    Layout const& layout = *seat.L;
-    return seat.CastSpellId && layout.Has(BlockId::Duel)
-        && action == layout.Slice(BlockId::Duel).ActionFirst + DuelBlock::ACTION_STOP_CASTING
-        && now < seat.CastStartMs + _tuning.Actions.StopCastMinMs;
+    return seat.Memory.Paced(*seat.L, action, env.EpisodeElapsedMs, _tuning.Actions);
 }
 
-void Animus::Curriculum::StageScenario::Press(Env const& env, SeatState& seat, uint32 action) const
+void Animus::Curriculum::StageScenario::Press(Env const& env, SeatState& seat, Player* bot, uint32 action) const
 {
     Layout const& layout = *seat.L;
     std::optional<BlockId> const block = layout.BlockOfAction(action);
@@ -1558,45 +1534,25 @@ void Animus::Curriculum::StageScenario::Press(Env const& env, SeatState& seat, u
         return;
 
     ++seat.ActionsPressed;
-    if (seat.ActionReadyMs.size() != layout.NumActions)
-        seat.ActionReadyMs.assign(layout.NumActions, 0);
-
     uint32 const now = env.EpisodeElapsedMs;
-    uint32 const local = action - layout.Slice(*block).ActionFirst;
     CurriculumTuning::ActionTuning const& pacing = _tuning.Actions;
-    bool const movement = GetBlock(*block).IsMovement(local);
-    seat.ActionReadyMs[action] = now + (movement ? pacing.MoveRepeatMs : pacing.RepeatMs);
+    seat.Memory.Press(layout, action, now, pacing, bot, &seat.KnownRanks);
 
     // The same action again within the window, past the free presses: charged at the next reward. Movement orders are
     // always free.
-    if (!movement)
-    {
-        if (seat.PressTimes.size() != layout.NumActions)
-            seat.PressTimes.assign(layout.NumActions, {});
-
-        std::vector<uint32>& presses = seat.PressTimes[action];
-        std::erase_if(presses, [now, &pacing](uint32 pressed) { return pressed + pacing.RepeatWindowMs <= now; });
-        presses.push_back(now);
-        if (presses.size() > pacing.RepeatFree)
-        {
-            ++seat.StepRepeats;
-            ++seat.RepeatedPresses;
-        }
-    }
-
-    // Stopping a cast to start the same one again is the loop the stop-cast charge prices; a player does not do it.
-    if (*block != BlockId::Duel || local != DuelBlock::ACTION_STOP_CASTING || !seat.CastSpellId)
+    if (GetBlock(*block).IsMovement(action - layout.Slice(*block).ActionFirst))
         return;
 
-    uint32 const coreFirst = layout.Slice(BlockId::Core).ActionFirst;
-    for (uint32 i = 0; i < seat.KnownRanks.size(); ++i)
-    {
-        SpellInfo const* info = seat.KnownRanks[i];
-        if (!info || info->Id != seat.CastSpellId || coreFirst + i >= seat.ActionReadyMs.size())
-            continue;
+    if (seat.PressTimes.size() != layout.NumActions)
+        seat.PressTimes.assign(layout.NumActions, {});
 
-        uint32& ready = seat.ActionReadyMs[coreFirst + i];
-        ready = std::max(ready, now + pacing.RecastAfterStopMs);
+    std::vector<uint32>& presses = seat.PressTimes[action];
+    std::erase_if(presses, [now, &pacing](uint32 pressed) { return pressed + pacing.RepeatWindowMs <= now; });
+    presses.push_back(now);
+    if (presses.size() > pacing.RepeatFree)
+    {
+        ++seat.StepRepeats;
+        ++seat.RepeatedPresses;
     }
 }
 

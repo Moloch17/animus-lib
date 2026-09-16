@@ -50,6 +50,9 @@ namespace Animus::Curriculum
         std::vector<ActionCatalog::Action> AllySpells;
         uint32 AllyHealCount = 0;
         std::vector<ActionCatalog::Action> AllyRevives; // resurrections and the soulstone (Catalog().Revives())
+        /// Per action: Block::MoveDirection and Block::ModeGroupOf (as uint8), resolved once for SeatMemory.
+        std::vector<int8> MoveDirections;
+        std::vector<uint8> ModeGroups;
 
         /// The layout of `profile` at `stage` (Index 0). Builds the profile's assets on first use.
         [[nodiscard]] static Layout Build(ClassRoleProfile const& profile, StageDefinition const& stage);

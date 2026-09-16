@@ -24,7 +24,9 @@
 #include <boost/json/object.hpp>
 #include "Player.h"
 #include "SpellChecks.h"
+#include "SeatMemory.h"
 #include "SpellInfo.h"
+#include "SpellMgr.h"
 #include <algorithm>
 
 namespace
@@ -85,6 +87,30 @@ uint32 Animus::Curriculum::CoreBlock::TalentObsFirst(Layout const& layout)
 uint32 Animus::Curriculum::CoreBlock::TreeObsFirst(Layout const& layout)
 {
     return TalentObsFirst(layout) + uint32(layout.Assets->Talents->Talents().size());
+}
+
+Animus::Curriculum::ModeGroup Animus::Curriculum::CoreBlock::ModeGroupOf(Layout const& layout, uint32 local) const
+{
+    std::vector<ActionCatalog::Action> const& actions = layout.Catalog().Actions();
+    SpellInfo const* info = local < actions.size() && actions[local].Type == ActionCatalog::Kind::Spell
+        ? sSpellMgr->GetSpellInfo(actions[local].FirstRank) : nullptr;
+    if (!info)
+        return ModeGroup::None;
+
+    switch (info->GetSpellSpecific())
+    {
+        case SPELL_SPECIFIC_ASPECT:             return ModeGroup::Aspect;
+        case SPELL_SPECIFIC_AURA:               return ModeGroup::Aura;
+        case SPELL_SPECIFIC_SEAL:               return ModeGroup::Seal;
+        case SPELL_SPECIFIC_WARLOCK_ARMOR:
+        case SPELL_SPECIFIC_MAGE_ARMOR:
+        case SPELL_SPECIFIC_ELEMENTAL_SHIELD:   return ModeGroup::Armor;
+        case SPELL_SPECIFIC_PRESENCE:           return ModeGroup::Form;
+        default:
+            break;
+    }
+
+    return info->HasAura(SPELL_AURA_MOD_SHAPESHIFT) ? ModeGroup::Form : ModeGroup::None;
 }
 
 std::string Animus::Curriculum::CoreBlock::ActionName(Layout const& layout, uint32 local) const
@@ -217,6 +243,21 @@ void Animus::Curriculum::CoreBlock::Observe(SeatView const& view, float* obs, ui
     obs[OBS_LAST_STEP_POWER_DELTA] = view.LastStepPowerDelta;
     obs[OBS_EPISODE_TIME] = view.EpisodeTime;
 
+    SeatMemory const* memory = view.Memory;
+    if (memory)
+    {
+        obs[OBS_SINCE_MOVE] = memory->SinceMove(view.NowMs);
+        obs[OBS_LAST_MOVE_DIRECTION] = memory->LastMoveDirection();
+        obs[OBS_SINCE_MODE_CHANGE] = memory->SinceModeChange(view.NowMs);
+        obs[OBS_HEALTH_TREND] = memory->SelfHealthTrend();
+        obs[OBS_TARGET_HEALTH_TREND] = memory->TargetHealthTrend();
+    }
+    else
+    {
+        obs[OBS_SINCE_MOVE] = 1.0f;
+        obs[OBS_SINCE_MODE_CHANGE] = 1.0f;
+    }
+
     std::vector<ActionCatalog::Action> const& actions = view.L->Catalog().Actions();
     for (uint32 action = 0; action < actions.size(); ++action)
     {
@@ -239,6 +280,9 @@ void Animus::Curriculum::CoreBlock::Observe(SeatView const& view, float* obs, ui
             if (!obs[OBS_GCD] && info->StartRecoveryTime)
                 obs[OBS_GCD] = std::min(1.0f, float(bot->GetGlobalCooldownMgr().GetGlobalCooldown(info)) / GCD_MS);
         }
+
+        obs[OBS_GLOBAL_COUNT + action * ACTION_FEATURES + 5] = memory
+            ? memory->SincePressed(view.L->Slice(BlockId::Core).ActionFirst + action, view.NowMs) : 1.0f;
 
         if (mask && action > 0)
             mask[action] = IsActionAllowed(view, action) ? 1 : 0;

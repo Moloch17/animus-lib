@@ -24,6 +24,7 @@
 #include "ObjectGuid.h"
 #include "Position.h"
 #include "RewardLedger.h"
+#include "SeatMemory.h"
 #include "SeatView.h"
 #include "SeatCharacter.h"
 #include "Supplies.h"
@@ -151,11 +152,9 @@ namespace Animus::Curriculum
         uint32 Revives = 0;                     // dead allies (owner, teammates) the seat resurrected
         bool StepRevivedAlly = false;           // an ally the seat resurrected stood up this decision
 
-        // Pacing (CurriculumTuning::ActionTuning): per layout action, the episode time it may be pressed again (empty
-        // until the first press), and the cast or channel the bot is in, when it began.
-        std::vector<uint32> ActionReadyMs;
-        uint32 CastSpellId = 0;
-        uint32 CastStartMs = 0;
+        // Pacing (CurriculumTuning::ActionTuning) and what the seat has been doing, on the episode clock (sized to the
+        // layout at the episode's first observation).
+        SeatMemory Memory;
         uint32 ActionsPressed = 0;              // actions other than the no-op the seat took
 
         // Repeats (ActionTuning::Repeat): per layout action, the episode times of its presses within the window (empty
@@ -195,9 +194,7 @@ namespace Animus::Curriculum
             LastPetHealth = 0.0f;
             Revives = 0;
             StepRevivedAlly = false;
-            ActionReadyMs.clear();
-            CastSpellId = 0;
-            CastStartMs = 0;
+            Memory.Reset(0);
             ActionsPressed = 0;
             PressTimes.clear();
             StepRepeats = 0;

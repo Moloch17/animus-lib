@@ -120,6 +120,21 @@ namespace Animus::Curriculum
             float RangedRange = 25.0f;          // ... ranged specs
         } Duel;
 
+        /// How hard the creature duel's opponents are, per class/role. Tier t below EliteTier is a normal creature
+        /// t x LevelsPerTier levels above the seat; from EliteTier on an elite, (t - EliteTier) x LevelsPerTier levels
+        /// above. A class/role moves up a tier when it wins (kills without dying) RaiseAbove of Window fights at its
+        /// tier, and down when it wins fewer than LowerBelow.
+        struct DifficultyTuning
+        {
+            uint32 MaxTier = 6;
+            uint32 EliteTier = 4;               // > MaxTier: no elites
+            uint32 LevelsPerTier = 1;
+            float RaiseAbove = 0.9f;
+            float LowerBelow = 0.6f;
+            uint32 Window = 200;                // fights at a tier before it is judged
+            int32 ReviewChance = 25;            // percent of training fights drawn from a lower tier, so none is lost
+        } Difficulty;
+
         /// Cast-time spells, from the duel stage on.
         struct CastingTuning
         {
@@ -149,6 +164,13 @@ namespace Animus::Curriculum
             uint32 MoveRepeatMs = 300;          // the same movement order again (steering stays responsive)
             uint32 StopCastMinMs = 500;         // a cast the bot is in cannot be stopped before it ran this long
             uint32 RecastAfterStopMs = 2000;    // a spell the bot stopped itself cannot be started again for this long
+            /// A movement order back the way the last one went (in toward the target, then away, or the reverse)
+            /// waits this long: stage1_duel's seats gave 60 to 140 movement orders a fight, running in and backing
+            /// off by turns. Movement is still free; only the reversal waits.
+            uint32 ReverseMoveMs = 1000;
+            /// A stance, form, presence, aspect, aura, seal, armor or pet stance holds this long before another change
+            /// of its kind: warrior tanks changed stance 22 times a fight, hunters their aspect 12.
+            uint32 ModeLockMs = 5000;
             /// Pressing the same action over and over. Pacing caps how often an action can be pressed, not how many
             /// times in a row: stage1_duel's warlocks gave their pet 93 orders an episode, a second apart, and the
             /// pet dealt 1% of their damage. Each press of an action counts the presses of that same action within
@@ -347,6 +369,14 @@ namespace Animus::Curriculum
             f("Duel.MeleeRange", tuning.Duel.MeleeRange);
             f("Duel.RangedRange", tuning.Duel.RangedRange);
 
+            f("Difficulty.MaxTier", tuning.Difficulty.MaxTier);
+            f("Difficulty.EliteTier", tuning.Difficulty.EliteTier);
+            f("Difficulty.LevelsPerTier", tuning.Difficulty.LevelsPerTier);
+            f("Difficulty.RaiseAbove", tuning.Difficulty.RaiseAbove);
+            f("Difficulty.LowerBelow", tuning.Difficulty.LowerBelow);
+            f("Difficulty.Window", tuning.Difficulty.Window);
+            f("Difficulty.ReviewChance", tuning.Difficulty.ReviewChance);
+
             f("Casting.TimeWasted", tuning.Casting.TimeWasted);
             f("Casting.TimeCompleted", tuning.Casting.TimeCompleted);
             f("Casting.Cancel", tuning.Casting.Cancel);
@@ -355,6 +385,8 @@ namespace Animus::Curriculum
             f("Actions.MoveRepeatMs", tuning.Actions.MoveRepeatMs);
             f("Actions.StopCastMinMs", tuning.Actions.StopCastMinMs);
             f("Actions.RecastAfterStopMs", tuning.Actions.RecastAfterStopMs);
+            f("Actions.ReverseMoveMs", tuning.Actions.ReverseMoveMs);
+            f("Actions.ModeLockMs", tuning.Actions.ModeLockMs);
             f("Actions.Repeat", tuning.Actions.Repeat);
             f("Actions.RepeatWindowMs", tuning.Actions.RepeatWindowMs);
             f("Actions.RepeatFree", tuning.Actions.RepeatFree);

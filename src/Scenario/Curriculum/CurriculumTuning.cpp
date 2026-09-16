@@ -73,6 +73,8 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
     ClampRolePair(prefix, "Characters.HighLevelChance", tuning.Characters.HighLevelChance,
         "Characters.LowLevelChance", tuning.Characters.LowLevelChance);
     ClampPercent(prefix, "Characters.PetOutChance", tuning.Characters.PetOutChance);
+    ClampPercent(prefix, "Difficulty.ReviewChance", tuning.Difficulty.ReviewChance);
+    tuning.Difficulty.Window = std::max<uint32>(1, tuning.Difficulty.Window);
     ClampRolePair(prefix, "Characters.NoisyTalentChance", tuning.Characters.NoisyTalentChance,
         "Characters.RandomTalentChance", tuning.Characters.RandomTalentChance);
     ClampPercent(prefix, "Party.ClassicChance", tuning.Party.ClassicChance);

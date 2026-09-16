@@ -30,6 +30,7 @@
 #include <array>
 #include <functional>
 #include <string>
+#include <mutex>
 #include <vector>
 
 class Group;
@@ -69,19 +70,50 @@ namespace Animus::Curriculum
     }
 
     /// A same-level creature spawned out of aggro range, which fights back. Reward: CombatReward::OneOnOne.
+    ///
+    /// Its difficulty adapts per class/role (CurriculumTuning::DifficultyTuning): once a class/role wins most of its
+    /// fights at a tier, its opponents come from the next one -- a level or more above it, then elites. A fight that
+    /// simple play wins every time teaches nothing a plan would add. An evaluation spreads its seeds over every tier
+    /// instead, so two checkpoints meet the same fights.
     class CreatureEncounter final : public Encounter
     {
     public:
-        using Encounter::Encounter;
+        CreatureEncounter(StageScenario& scenario, uint32 envs);
 
         [[nodiscard]] std::vector<RewardTerm> RewardTerms() const override;
+        void AddEpisodeInfo(EpisodeInfoTable& table) override;
         bool Build(Env& env, Map* map, uint8 level) override;
         void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
         [[nodiscard]] bool IsTerminal(Env const& env) const override;
 
+        /// Class/role `layout`'s current training tier.
+        [[nodiscard]] uint32 Tier(uint16 layout) const;
+
     private:
+        struct EnvFight
+        {
+            uint8 Tier = 0;
+            bool Elite = false;
+            uint16 Layout = 0;
+            bool Counts = false;        // a training fight at its class/role's current tier: its outcome moves it
+            bool Recorded = false;      // the outcome is in
+        };
+
+        struct LayoutTier
+        {
+            uint32 Tier = 0;
+            uint32 Fights = 0;          // at this tier, since it was reached
+            uint32 Wins = 0;
+        };
+
         /// The episode's time limit is reached.
         [[nodiscard]] static bool TimeIsUp(Env const& env);
+        /// A fight at its class/role's tier ended: count it, and move the tier once a window is full.
+        void Record(EnvFight const& fight, bool won);
+
+        std::vector<EnvFight> _envs;
+        mutable std::mutex _tiersLock;  // envs finish on map update threads
+        std::vector<LayoutTier> _tiers;
     };
 
     /// Packs of creatures (casters included, often linked): one pack, or the gauntlet's pull after pull with breaks

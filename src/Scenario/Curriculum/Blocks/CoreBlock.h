@@ -67,21 +67,31 @@ namespace Animus::Curriculum
             /// same rows over and over, and a deterministic policy cycles through the same decisions for good:
             /// stage1_duel evaluation had warlocks start and stop one cast 299 times, 0 damage, on six seeds.
             OBS_EPISODE_TIME            = 61,
-            OBS_GLOBAL_COUNT            = 62
+            /// What the seat has been doing (SeatMemory): one observation says nothing of it, so a policy re-decided
+            /// from scratch every decision, running in and backing off by turns and dancing between stances.
+            OBS_SINCE_MOVE              = 62,   // time since its last movement order / 5 s; 1 = none yet
+            OBS_LAST_MOVE_DIRECTION     = 63,   // +1 in toward the target, -1 away, 0 neither
+            OBS_SINCE_MODE_CHANGE       = 64,   // time since its last stance, form, aspect, aura, seal, armor or pet
+                                                // stance change / 10 s; 1 = none yet
+            OBS_HEALTH_TREND            = 65,   // its health now - its average over the last few seconds
+            OBS_TARGET_HEALTH_TREND     = 66,   // the same for its target
+            OBS_GLOBAL_COUNT            = 67
 
             // Then, per catalog action: ACTION_FEATURES features (known, cooldown, aura on target, aura on self,
-            // stacks). Then per talent of the class: rank / max rank. Then per tree: points / 71.
+            // stacks, time since the seat pressed it / 10 s). Then per talent of the class: rank / max rank. Then
+            // per tree: points / 71.
         };
 
         /// The first two catalog actions are the no-op and cancel-queued.
         static constexpr uint32 FIRST_CAST_ACTION = 2;
-        static constexpr uint32 ACTION_FEATURES = 5;
+        static constexpr uint32 ACTION_FEATURES = 6;
         static constexpr uint32 MAX_SPECS = 3;
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Core; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;
         void DescribeManifest(Layout const& layout, boost::json::object& block) const override;
         [[nodiscard]] std::string ActionName(Layout const& layout, uint32 local) const override;
+        [[nodiscard]] ModeGroup ModeGroupOf(Layout const& layout, uint32 local) const override;
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
 

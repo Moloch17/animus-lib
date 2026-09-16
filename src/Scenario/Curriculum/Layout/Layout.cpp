@@ -103,6 +103,18 @@ Animus::Curriculum::Layout Animus::Curriculum::Layout::Build(ClassRoleProfile co
         layout._blockMask |= 1u << uint32(id);
     }
 
+    layout.MoveDirections.assign(layout.NumActions, 0);
+    layout.ModeGroups.assign(layout.NumActions, 0);
+    for (BlockId id : layout.Blocks)
+    {
+        BlockSlice const& slice = layout.Slice(id);
+        for (uint32 local = 0; local < slice.ActionCount; ++local)
+        {
+            layout.MoveDirections[slice.ActionFirst + local] = GetBlock(id).MoveDirection(local);
+            layout.ModeGroups[slice.ActionFirst + local] = uint8(GetBlock(id).ModeGroupOf(layout, local));
+        }
+    }
+
     return layout;
 }
 

@@ -35,6 +35,7 @@ class Unit;
 namespace Animus::Curriculum
 {
     struct Layout;
+    class SeatMemory;
 
     /// One bot's situation at a decision: what the blocks cannot read from the world themselves. The scenario fills
     /// it; each part is only used by the blocks that need it.
@@ -64,6 +65,8 @@ namespace Animus::Curriculum
         float LastStepPowerDelta = 0.0f;            // primary power change, as a fraction of max
         float LastStepDamageTaken = 0.0f;           // / the bot's max health
         float EpisodeTime = 0.0f;                   // time into the episode / EPISODE_TIME_SCALE_MS, clamped
+        SeatMemory const* Memory = nullptr;         // what the seat has been doing; null: none (features at rest)
+        uint64 NowMs = 0;                           // the clock Memory was kept with
 
         // Duel: time in combat, what the bot brought (potions, bandages, stones), whether it may resurrect itself, and
         // a hunter's beasts on offer.

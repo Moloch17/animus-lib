@@ -143,6 +143,17 @@ namespace Animus::Curriculum
             return local <= ACTION_STOP || local == ACTION_BREAK_LINE_OF_SIGHT;
         }
 
+        [[nodiscard]] int8 MoveDirection(uint32 local) const override
+        {
+            return local == ACTION_MOVE_TO_TARGET || local == ACTION_MOVE_BEHIND ? 1
+                : local == ACTION_BACK_OFF || local == ACTION_BREAK_LINE_OF_SIGHT ? -1 : 0;
+        }
+
+        [[nodiscard]] ModeGroup ModeGroupOf(Layout const& /*layout*/, uint32 local) const override
+        {
+            return local == ACTION_CANCEL_FORM ? ModeGroup::Form : ModeGroup::None;
+        }
+
         /// A dead bot's features and mask (every other block stays empty): dead, and whether it can resurrect itself.
         static void ObserveDead(SeatView const& view, float* obs, uint8* mask);
     };

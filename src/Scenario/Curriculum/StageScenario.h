@@ -228,13 +228,10 @@ namespace Animus::Curriculum
         /// (SeatView::HiddenTarget).
         [[nodiscard]] SeatView ViewSeat(Env const& env, uint32 seat, Player* bot, Unit* target) const;
         void ApplySeatAction(Env& env, uint32 seat, int32 action);
-        /// Note the cast or channel the seat's bot is in, and when it began (the stop-cast pace reads it).
-        static void TrackCast(Env const& env, SeatState& seat, Player* bot);
-        /// Whether layout action `action` may not be pressed now (Tuning().Actions): pressed too recently, a spell
-        /// stopped too recently, or a stop of a cast that has only just begun.
+        /// Whether layout action `action` may not be pressed now (SeatMemory::Paced, Tuning().Actions).
         [[nodiscard]] bool Paced(Env const& env, SeatState const& seat, uint32 action) const;
-        /// The seat pressed `action`: when it, and a spell it stopped, may be pressed again.
-        void Press(Env const& env, SeatState& seat, uint32 action) const;
+        /// The seat pressed `action`: its memory, and the repeat charge.
+        void Press(Env const& env, SeatState& seat, Player* bot, uint32 action) const;
         void ObserveSeat(Env& env, uint32 seat, float* obs, uint8* mask);
         [[nodiscard]] float SeatReward(Env& env, uint32 seat);
         void WriteState(Env const& env, float* state) const;

@@ -101,6 +101,11 @@ namespace Animus::Curriculum
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
         [[nodiscard]] std::string ActionName(Layout const& layout, uint32 local) const override;
+        [[nodiscard]] ModeGroup ModeGroupOf(Layout const& /*layout*/, uint32 local) const override
+        {
+            return local == ACTION_PASSIVE || local == ACTION_DEFENSIVE || local == ACTION_AGGRESSIVE
+                ? ModeGroup::PetStance : ModeGroup::None;
+        }
 
         /// Whether the class has a pet this block controls.
         [[nodiscard]] static bool HasPet(uint8 playerClass);

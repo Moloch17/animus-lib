@@ -21,7 +21,12 @@
 #include "Creature.h"
 #include "Env.h"
 #include "Opponents.h"
+#include "EnvPool.h"
+#include "EpisodeInfoTable.h"
+#include "Log.h"
 #include "Player.h"
+#include "Random.h"
+#include "StageScenario.h"
 
 namespace
 {
@@ -37,13 +42,63 @@ std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::CreatureEncounte
         RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::Timeout, RewardTerm::Stall, RewardTerm::Spacing };
 }
 
+Animus::Curriculum::CreatureEncounter::CreatureEncounter(StageScenario& scenario, uint32 envs)
+    : Encounter(scenario), _envs(envs), _tiers(scenario.Layouts().size())
+{
+}
+
+void Animus::Curriculum::CreatureEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
+{
+    // The fight's difficulty tier, and whether its opponent was an elite.
+    table.Add("difficulty", [this](Env const& env, uint32) { return float(_envs[env.Index].Tier); });
+    table.Add("opponent_elite", [this](Env const& env, uint32) { return _envs[env.Index].Elite ? 1.0f : 0.0f; });
+}
+
+uint32 Animus::Curriculum::CreatureEncounter::Tier(uint16 layout) const
+{
+    std::lock_guard<std::mutex> guard(_tiersLock);
+    return layout < _tiers.size() ? _tiers[layout].Tier : 0;
+}
+
 bool Animus::Curriculum::CreatureEncounter::Build(Env& env, Map* map, uint8 /*level*/)
 {
     EnvState& data = _scenario.Data(env);
     Player* bot = _scenario.SeatBot(env, 0);
+    CurriculumTuning::DifficultyTuning const& difficulty = _scenario.Tuning().Difficulty;
+    SeatState const& seat = data.Seats[0];
 
-    data.OpponentEntry = Opponents::OpponentPool::Instance().Random(data.Seats[0].Level);
-    Creature* opponent = data.OpponentEntry ? Opponents::SpawnOpponent(bot, map, data.OpponentEntry) : nullptr;
+    // The tier: spread over the seeds in an evaluation; the class/role's own in training, now and then a lower one.
+    EnvFight& fight = _envs[env.Index];
+    fight = EnvFight();
+    fight.Layout = seat.L ? seat.L->Index : 0;
+    if (env.EpisodeSeedIndex != NO_EPISODE_SEED)
+        fight.Tier = uint8(env.EpisodeSeedIndex % (difficulty.MaxTier + 1));
+    else
+    {
+        uint32 const current = std::min(Tier(fight.Layout), difficulty.MaxTier);
+        fight.Tier = uint8(current);
+        fight.Counts = true;
+        if (current && roll_chance_i(difficulty.ReviewChance))
+        {
+            fight.Tier = uint8(urand(0, current - 1));
+            fight.Counts = false;
+        }
+    }
+
+    fight.Elite = fight.Tier >= difficulty.EliteTier;
+    uint32 const steps = fight.Elite ? fight.Tier - difficulty.EliteTier : fight.Tier;
+    uint8 const level = uint8(std::min<uint32>(seat.Level + steps * difficulty.LevelsPerTier, DEFAULT_MAX_LEVEL + 3));
+
+    Opponents::OpponentPool const& pool = Opponents::OpponentPool::Instance();
+    data.OpponentEntry = fight.Elite ? pool.RandomElite(level) : 0;
+    if (!data.OpponentEntry)
+    {
+        fight.Elite = false;
+        data.OpponentEntry = pool.Random(level);
+    }
+
+    Creature* opponent = data.OpponentEntry
+        ? Opponents::SummonOpponent(bot, map, data.OpponentEntry, Opponents::FindSpawnPoint(bot, map), level) : nullptr;
     if (!opponent)
         return false;
 
@@ -104,12 +159,51 @@ void Animus::Curriculum::CreatureEncounter::Reward(Env& env, uint32 seat, Player
             ledger.Add(RewardTerm::Spacing, -tuning.Spacing * seconds);
     }
 
+    // The outcome, once: a kill without a death is a win, a death or the clock a loss.
+    EnvFight& fight = _envs[env.Index];
+    if (seat == 0 && !fight.Recorded && (tally.Killed || tally.Died || TimeIsUp(env)))
+    {
+        fight.Recorded = true;
+        if (fight.Counts)
+            Record(fight, tally.Killed && !tally.Died);
+    }
+
     // Out of time with neither side dead: the fight is lost (IsTerminal ends it as a loss, not a cut-off).
     if (!tally.Killed && !tally.Died && !tally.TimedOut && TimeIsUp(env))
     {
         tally.TimedOut = true;
         ledger.Add(RewardTerm::Timeout, -tuning.Timeout);
     }
+}
+
+void Animus::Curriculum::CreatureEncounter::Record(EnvFight const& fight, bool won)
+{
+    CurriculumTuning::DifficultyTuning const& difficulty = _scenario.Tuning().Difficulty;
+    std::lock_guard<std::mutex> guard(_tiersLock);
+    if (fight.Layout >= _tiers.size())
+        return;
+
+    LayoutTier& tier = _tiers[fight.Layout];
+    if (tier.Tier != fight.Tier)
+        return;         // the tier moved while this fight was on
+
+    ++tier.Fights;
+    tier.Wins += won ? 1 : 0;
+    if (tier.Fights < difficulty.Window)
+        return;
+
+    float const rate = float(tier.Wins) / float(tier.Fights);
+    uint32 const was = tier.Tier;
+    if (rate >= difficulty.RaiseAbove && tier.Tier < difficulty.MaxTier)
+        ++tier.Tier;
+    else if (rate < difficulty.LowerBelow && tier.Tier > 0)
+        --tier.Tier;
+
+    tier.Fights = 0;
+    tier.Wins = 0;
+    if (tier.Tier != was)
+        LOG_INFO("module.animus", "{}: {} moves from difficulty tier {} to {} ({:.0f}% won)", _scenario.Name(),
+            _scenario.Layouts()[fight.Layout].Profile->Name, was, tier.Tier, rate * 100.0f);
 }
 
 bool Animus::Curriculum::CreatureEncounter::TimeIsUp(Env const& env)

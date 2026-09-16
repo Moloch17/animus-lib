@@ -59,6 +59,19 @@ namespace Animus::Curriculum
 
     constexpr std::size_t BLOCK_COUNT = std::size_t(BlockId::Count);
 
+    /// Kinds of standing choice a player makes and keeps (SeatMemory: a change of one kind holds for a while).
+    enum class ModeGroup : uint8
+    {
+        None,
+        Form,           // stances, forms, presences, Shadowform
+        Aspect,         // hunter aspects
+        Aura,           // paladin auras
+        Seal,           // paladin seals
+        Armor,          // mage and warlock armors, shaman shields
+        PetStance,      // passive, defensive, aggressive
+        Count
+    };
+
     // Sizes several blocks and the scenario agree on.
     constexpr uint32 MAX_SEATS = 4;         // learned agents per env: 1, an arena's 2 or a party's 4
     constexpr uint32 PARTY_MEMBERS = 3;     // a party seat's teammates
@@ -118,6 +131,16 @@ namespace Animus::Curriculum
         /// Whether action `local` is a movement order, which is paced by CurriculumTuning::ActionTuning::MoveRepeatMs
         /// rather than RepeatMs: steering has to be re-issued more often than a spell or an order.
         [[nodiscard]] virtual bool IsMovement(uint32 /*local*/) const { return false; }
+
+        /// For a movement order, which way it goes relative to the target: +1 in (move to it, behind it), -1 away
+        /// (back off, break line of sight), 0 neither (to casting range, stop, follow).
+        [[nodiscard]] virtual int8 MoveDirection(uint32 /*local*/) const { return 0; }
+
+        /// The kind of standing choice action `local` makes, if any (ModeGroup).
+        [[nodiscard]] virtual ModeGroup ModeGroupOf(Layout const& /*layout*/, uint32 /*local*/) const
+        {
+            return ModeGroup::None;
+        }
 
         /// A readable name for action `local`, for the manifest and the evaluation's per-action counts; empty for
         /// the default, "<block>_<local>".
