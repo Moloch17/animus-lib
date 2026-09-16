@@ -233,6 +233,20 @@ Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Stan
     return build;
 }
 
+Animus::Curriculum::TalentBuilder::Build Animus::Curriculum::TalentBuilder::Noisy(std::string const& spec,
+    uint8 specTab, uint32 points, uint32 move) const
+{
+    // The standard build stops short, and the rest is spent as a random build spends: the early picks (the ones a
+    // player takes first) are kept, the tail is somebody's own idea. Spend caps the spec tree like Standard does.
+    move = std::min(move, points);
+    Build build = Standard(spec, specTab, points - move);
+
+    uint32 const otherTrees = ((1u << TREE_COUNT) - 1) & ~(1u << specTab);
+    Spend(build, 1u << specTab, points - uint32(build.Order.size()), specTab);
+    Spend(build, otherTrees, points - uint32(build.Order.size()), specTab);
+    return build;
+}
+
 void Animus::Curriculum::TalentBuilder::ApplyGlyphs(Player* bot, std::string const& spec) const
 {
     auto const data = _specs.find(spec);

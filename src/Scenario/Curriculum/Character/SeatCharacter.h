@@ -26,8 +26,8 @@ class Player;
 
 /*
  * A learned character as a stage's seats are built, for everyone who plays a class/role model: the forge's seats and
- * mod-animus's companions. What a model saw in training (the standard talent build, trainer spells, gear, a stance) is
- * what it must get in play.
+ * mod-animus's companions. What a model saw in training (talents, trainer spells, gear, a stance) is what it must get
+ * in play.
  */
 namespace Animus::Curriculum
 {
@@ -35,17 +35,31 @@ namespace Animus::Curriculum
 
     namespace SeatCharacter
     {
+        /// How a character's talent points are spent (CurriculumTuning::CharacterTuning). Training draws one per
+        /// character, so the policy sees builds it has to read rather than one build per spec.
+        enum class TalentPlan : uint8
+        {
+            Standard,       // the spec's standard build (SpecBuilds)
+            Noisy,          // ... with its last points spent at random
+            Random,         // every point at random, inside the spec's tree first
+        };
+
+        [[nodiscard]] char const* TalentPlanName(TalentPlan plan);
+
         struct Built
         {
             TalentBuilder::Build Build;
+            TalentPlan Plan = TalentPlan::Standard;
             uint32 UnspentTalentPoints = 0;
             uint32 EquippedItems = 0;
         };
 
-        /// Proficiencies, spec `spec`'s standard talents and glyphs, the class's trainer spells and gear (resilience gear
-        /// with `pvp`), then full health and mana, full energy and no rage or runic power. The bot's talent points must
-        /// be right for its map (InitTalentForLevel after placing it).
-        Built Configure(Player* bot, Layout const& layout, uint8 spec, bool pvp);
+        /// Proficiencies, spec `spec`'s talents (`plan`, moving `noisePoints` for TalentPlan::Noisy) and glyphs, the
+        /// class's trainer spells and gear (resilience gear with `pvp`), then full health and mana, full energy and no
+        /// rage or runic power. The bot's talent points must be right for its map (InitTalentForLevel after placing
+        /// it).
+        Built Configure(Player* bot, Layout const& layout, uint8 spec, bool pvp,
+            TalentPlan plan = TalentPlan::Standard, uint32 noisePoints = 0);
 
         /// Get a character ready to fight something that fights back: no XP (levelling up would change the character
         /// under the model) and a warrior's stance (nothing works without one, and only a first login casts it).

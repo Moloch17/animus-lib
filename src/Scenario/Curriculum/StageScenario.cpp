@@ -65,6 +65,18 @@ namespace
     /// Version of stage.json (2 adds the stage's arenas).
     constexpr uint32 STAGE_FILE_FORMAT = 2;
 
+    /// How a character's talent points are spent this episode (CurriculumTuning::CharacterTuning).
+    SeatCharacter::TalentPlan RandomTalentPlan(CurriculumTuning::CharacterTuning const& tuning)
+    {
+        int32 const roll = irand(0, 99);
+        if (roll < tuning.NoisyTalentChance)
+            return SeatCharacter::TalentPlan::Noisy;
+        if (roll < tuning.NoisyTalentChance + tuning.RandomTalentChance)
+            return SeatCharacter::TalentPlan::Random;
+
+        return SeatCharacter::TalentPlan::Standard;
+    }
+
     /// A level every seat's class can be: `fixed` when set (raised to minLevel), else drawn from the tuning.
     uint8 RandomLevel(uint8 minLevel, uint32 fixed, CurriculumTuning::CharacterTuning const& tuning)
     {
@@ -401,6 +413,11 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("level", [seat](Env const& env, uint32 index) { return float(seat(env, index).Level); });
     _info.Add("race", [seat](Env const& env, uint32 index) { return float(seat(env, index).Race); });
     _info.Add("spec", [seat](Env const& env, uint32 index) { return float(seat(env, index).Spec); });
+    // Which way this character's talents were spent (SeatCharacter::TalentPlan): 0 standard, 1 noisy, 2 random.
+    _info.Add("talent_plan", [seat](Env const& env, uint32 index)
+    {
+        return float(uint32(seat(env, index).TalentPlan));
+    });
     _info.Add("unspent_talent_points", [seat](Env const& env, uint32 index)
     {
         return float(seat(env, index).UnspentTalentPoints);
@@ -784,6 +801,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
         uint8 Race;
         uint8 Level;
         uint8 Spec;
+        SeatCharacter::TalentPlan TalentPlan;
         float DamageScale;
         TalentBuilder::Build Build;
         uint32 UnspentTalentPoints;
@@ -795,7 +813,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
     for (uint32 seat = 0; seat < _seatCount; ++seat)
     {
         SeatState const& s = data.Seats[seat];
-        previous[seat] = { s.L, s.Race, s.Level, s.Spec, s.DamageScale, s.Build, s.UnspentTalentPoints,
+        previous[seat] = { s.L, s.Race, s.Level, s.Spec, s.TalentPlan, s.DamageScale, s.Build, s.UnspentTalentPoints,
             s.EquippedItems };
     }
 
@@ -878,6 +896,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
                 s.Race = c.Race;
                 s.Level = c.Level;
                 s.Spec = c.Spec;
+                s.TalentPlan = c.TalentPlan;
                 s.DamageScale = c.DamageScale;
                 s.Build = c.Build;
                 s.UnspentTalentPoints = c.UnspentTalentPoints;
@@ -957,7 +976,11 @@ Player* Animus::Curriculum::StageScenario::BuildSeat(Env& env, uint32 seatIndex,
 
 void Animus::Curriculum::StageScenario::Configure(Player* bot, SeatState& seat, bool pvp) const
 {
-    SeatCharacter::Built const built = SeatCharacter::Configure(bot, *seat.L, seat.Spec, pvp);
+    // Most characters get the spec's standard build; the rest have to be played as they are.
+    seat.TalentPlan = RandomTalentPlan(_tuning.Characters);
+    uint32 const noise = std::max<uint32>(1, _tuning.Characters.TalentNoisePoints);
+    SeatCharacter::Built const built = SeatCharacter::Configure(bot, *seat.L, seat.Spec, pvp, seat.TalentPlan,
+        urand(1, noise));
     seat.Build = built.Build;
     seat.UnspentTalentPoints = built.UnspentTalentPoints;
     seat.EquippedItems = built.EquippedItems;

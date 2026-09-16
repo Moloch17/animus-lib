@@ -41,6 +41,12 @@ namespace Animus::Curriculum
         {
             uint32 HighLevelFirst = 61;         // levels at or above this are "high"
             int32 HighLevelChance = 50;         // percent of characters drawn from the high levels
+            // How a character's talents are spent (see TalentBuilder). A standard build is always the same for a
+            // spec and a level, so a policy trained on those alone has nothing to read in its talent features: some
+            // characters move a few points, some spend them all at random, and the policy has to play what it got.
+            int32 NoisyTalentChance = 30;       // percent of characters: the standard build with points moved
+            int32 RandomTalentChance = 10;      // percent: every point spent at random (the rest: standard)
+            uint32 TalentNoisePoints = 5;       // a noisy build moves 1 to this many of its last points
         } Characters;
 
         /// Which party seats have a character, and their roles.
@@ -237,6 +243,9 @@ namespace Animus::Curriculum
         {
             f("Characters.HighLevelFirst", tuning.Characters.HighLevelFirst);
             f("Characters.HighLevelChance", tuning.Characters.HighLevelChance);
+            f("Characters.NoisyTalentChance", tuning.Characters.NoisyTalentChance);
+            f("Characters.RandomTalentChance", tuning.Characters.RandomTalentChance);
+            f("Characters.TalentNoisePoints", tuning.Characters.TalentNoisePoints);
 
             f("Party.SizeWeight1", tuning.Party.SizeWeight1);
             f("Party.SizeWeight2", tuning.Party.SizeWeight2);

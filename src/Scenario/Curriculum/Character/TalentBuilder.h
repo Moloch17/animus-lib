@@ -82,6 +82,10 @@ namespace Animus::Curriculum
         /// The spec's standard build (SpecBuilds) for `points`; random for a spec without one.
         [[nodiscard]] Build Standard(std::string const& spec, uint8 specTab, uint32 points) const;
 
+        /// The spec's standard build with its last `move` points spent at random instead: a build a player might
+        /// have, off the beaten path. `move` is clamped to the points there are.
+        [[nodiscard]] Build Noisy(std::string const& spec, uint8 specTab, uint32 points, uint32 move) const;
+
         /// Fills the bot's unlocked glyph slots with the spec's glyphs its level may use, best first.
         void ApplyGlyphs(Player* bot, std::string const& spec) const;
 

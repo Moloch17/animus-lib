@@ -24,8 +24,20 @@
 #include "Supplies.h"
 #include "TravelBlock.h"
 
+char const* Animus::Curriculum::SeatCharacter::TalentPlanName(TalentPlan plan)
+{
+    switch (plan)
+    {
+        case TalentPlan::Standard: return "standard";
+        case TalentPlan::Noisy:    return "noisy";
+        case TalentPlan::Random:   return "random";
+    }
+
+    return "standard";
+}
+
 Animus::Curriculum::SeatCharacter::Built Animus::Curriculum::SeatCharacter::Configure(Player* bot,
-    Layout const& layout, uint8 specIndex, bool pvp)
+    Layout const& layout, uint8 specIndex, bool pvp, TalentPlan plan, uint32 noisePoints)
 {
     ClassRoleAssets const& assets = *layout.Assets;
     SpecProfile const& spec = layout.Profile->Specs[specIndex];
@@ -33,7 +45,20 @@ Animus::Curriculum::SeatCharacter::Built Animus::Curriculum::SeatCharacter::Conf
     GearBuilder::LearnProficiencies(bot);
 
     Built built;
-    built.Build = assets.Talents->Standard(spec.Name, spec.TabPage, bot->GetFreeTalentPoints());
+    uint32 const points = bot->GetFreeTalentPoints();
+    built.Plan = plan;
+    switch (plan)
+    {
+        case TalentPlan::Noisy:
+            built.Build = assets.Talents->Noisy(spec.Name, spec.TabPage, points, noisePoints);
+            break;
+        case TalentPlan::Random:
+            built.Build = assets.Talents->Random(spec.TabPage, points);
+            break;
+        case TalentPlan::Standard:
+            built.Build = assets.Talents->Standard(spec.Name, spec.TabPage, points);
+            break;
+    }
     built.UnspentTalentPoints = assets.Talents->Apply(bot, built.Build);
 
     assets.Kit->Learn(bot);

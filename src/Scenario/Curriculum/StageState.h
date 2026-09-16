@@ -24,6 +24,7 @@
 #include "ObjectGuid.h"
 #include "Position.h"
 #include "RewardLedger.h"
+#include "SeatCharacter.h"
 #include "Supplies.h"
 #include "TalentBuilder.h"
 #include <array>
@@ -74,6 +75,7 @@ namespace Animus::Curriculum
         uint8 Race = 0;
         uint8 Level = 1;
         uint8 Spec = 0;
+        SeatCharacter::TalentPlan TalentPlan = SeatCharacter::TalentPlan::Standard;
         TalentBuilder::Build Build;
         uint32 UnspentTalentPoints = 0;
         uint32 EquippedItems = 0;

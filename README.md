@@ -33,7 +33,7 @@ Build it the way you build the modules that need it: static (the default) or all
 | `src/Model/` | `MlpPolicy` (the exported `.amdl` actor), `ModelLibrary` (a layout's model, checked against its manifest) |
 | `src/Core/` | `CoreHooks`: the seams for what only the forge core can do |
 | `src/Hooks/` | Damage, heal, cast and creature level hooks for every registered env pool |
-| `tools/spec_builds/` | The standard talent builds and glyphs; `generate.py` writes `SpecBuilds.cpp` |
+| `tools/spec_builds/` | The standard talent builds and glyphs; `generate.py` writes `SpecBuilds.cpp`. Characters draw a standard, a partly random or a fully random build (`Characters.*TalentChance`) |
 
 ## Using it from a module
 
