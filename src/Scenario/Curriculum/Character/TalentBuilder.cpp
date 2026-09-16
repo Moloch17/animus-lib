@@ -166,18 +166,8 @@ Animus::Curriculum::TalentBuilder::TalentBuilder(uint8 playerClass)
             data.Picks.push_back({ uint32(talent - _talents.begin()), pick.Ranks });
         }
 
-        // A list that asks for more than the cap in one tree: the points past it are spent in the other trees
-        // instead, so the tail of the list (its last-named talents) is not taken at level 80.
-        std::array<uint32, TREE_COUNT> listed{};
-        for (TalentPick const& pick : specBuild.Talents)
-            if (pick.Tab < TREE_COUNT)
-                listed[pick.Tab] += pick.Ranks;
-
-        for (uint8 tab = 0; tab < TREE_COUNT; ++tab)
-            if (listed[tab] > SPEC_TREE_POINTS)
-                LOG_WARN("module.animus", "Class {} {}: tree {} lists {} points, {} more than the {} a tree takes; "
-                    "the extra go to the other trees", playerClass, specBuild.Spec, tab, listed[tab],
-                    listed[tab] - SPEC_TREE_POINTS, SPEC_TREE_POINTS);
+        // A list may name more than SPEC_TREE_POINTS in one tree; the spend caps it there and puts the rest in
+        // the other trees, so its last-named talents are the ones that go. Every list does, so it is not news.
 
         data.Majors = resolveGlyphs(specBuild.MajorGlyphs, specBuild.Spec.data());
         data.Minors = resolveGlyphs(specBuild.MinorGlyphs, specBuild.Spec.data());
