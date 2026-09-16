@@ -67,7 +67,11 @@ namespace
             .Extends = "stage1_duel",
             .Summary = "a pack of 2-4, casters included, usually linked: targets, interrupts, crowd control",
             .Blocks = { Core, Duel, Pet, Pack },
-            .Arenas = { { .Name = "pack", .Against = Opposition::Pulls, .Schedule = PullSchedule::SinglePack } },
+            // 150 s: running out of time is a lost fight (Pulls.Timeout), and a pack is up to four of the duel's
+            // creatures. stage1_duel's policy took 17 s a kill and its baseline 23 s, so four take 70-90 s before the
+            // approach; the duel's 90 s (or the host's 60) would lose packs to the clock that play could win.
+            .Arenas = { { .Name = "pack", .Against = Opposition::Pulls, .Schedule = PullSchedule::SinglePack,
+                .EpisodeSeconds = 150 } },
         });
 
         stages.push_back({

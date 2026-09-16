@@ -178,6 +178,8 @@ namespace Animus::Curriculum
         {
             return _scenario.Arena(env).Schedule == PullSchedule::Gauntlet;
         }
+        /// Whether the env's episode is one pack on its own (no owner): won on the clear, lost on a death or the clock.
+        [[nodiscard]] bool SinglePack(Env const& env) const;
         /// Whether any arena of the stage is: its supplies, episode info columns.
         [[nodiscard]] bool AnyGauntlet() const;
         bool SpawnPull(Env& env, Map* map);

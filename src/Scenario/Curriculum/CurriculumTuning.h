@@ -208,12 +208,21 @@ namespace Animus::Curriculum
             float Interrupt = 0.3f;
             float Kill = 0.5f;
             float StepCost = 0.0002f;           // per decision
-            float Clear = 2.0f;
-            float FastClear = 3.0f;             // pack: times the episode fraction left after engaging
+            float Clear = 2.0f;                 // gauntlet and owner stages: each pull cleared
             float FastPull = 2.0f;              // gauntlet: times 1 - time since the pull engaged / 60 s
-            float HealthKept = 2.0f;            // times the health kept through the pull or pack
-            float PackDeath = 3.0f;
+            float HealthKept = 2.0f;            // gauntlet and owner stages: times the health kept through the pull
             float GauntletDeath = 5.0f;
+            /// A single pack is won or lost, as the duel is: the clear outweighs finishing it untouched, and dying or
+            /// running out of time costs as much as the clear pays. Clear and HealthKept had the pack worth 2 + 2, so
+            /// keeping health paid as much as winning, and a death cost only 3.
+            float PackClear = 10.0f;
+            float FastClear = 1.0f;             // pack: times the episode fraction left after engaging
+            float PackHealthKept = 0.5f;        // pack: times the health kept through the pack
+            float PackDeath = 10.0f;
+            float Timeout = 10.0f;              // pack: the clock ran out with the pack and the seat both alive
+            float Stall = 0.05f;                // pack: per second not engaged once StallGraceMs are gone
+            uint32 StallGraceMs = 15000;
+            float Spacing = 0.03f;              // pack: per second a ranged spec is hit in melee reach
             float OwnerClearScale = 2.0f;       // owner stages: kills and clears count this many times
         } Pulls;
 
@@ -415,11 +424,17 @@ namespace Animus::Curriculum
             f("Pulls.Kill", tuning.Pulls.Kill);
             f("Pulls.StepCost", tuning.Pulls.StepCost);
             f("Pulls.Clear", tuning.Pulls.Clear);
-            f("Pulls.FastClear", tuning.Pulls.FastClear);
             f("Pulls.FastPull", tuning.Pulls.FastPull);
             f("Pulls.HealthKept", tuning.Pulls.HealthKept);
-            f("Pulls.PackDeath", tuning.Pulls.PackDeath);
             f("Pulls.GauntletDeath", tuning.Pulls.GauntletDeath);
+            f("Pulls.PackClear", tuning.Pulls.PackClear);
+            f("Pulls.FastClear", tuning.Pulls.FastClear);
+            f("Pulls.PackHealthKept", tuning.Pulls.PackHealthKept);
+            f("Pulls.PackDeath", tuning.Pulls.PackDeath);
+            f("Pulls.Timeout", tuning.Pulls.Timeout);
+            f("Pulls.Stall", tuning.Pulls.Stall);
+            f("Pulls.StallGraceMs", tuning.Pulls.StallGraceMs);
+            f("Pulls.Spacing", tuning.Pulls.Spacing);
             f("Pulls.OwnerClearScale", tuning.Pulls.OwnerClearScale);
 
             f("Owner.LevelSpread", tuning.Owner.LevelSpread);

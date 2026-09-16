@@ -55,6 +55,12 @@ namespace
             return !guid.IsPlayer();
         });
     }
+
+    /// The episode's time limit is reached.
+    bool TimeIsUp(Animus::Env const& env)
+    {
+        return env.EpisodeLengthMs && env.EpisodeElapsedMs >= env.EpisodeLengthMs;
+    }
 }
 
 Animus::Curriculum::PullsEncounter::PullsEncounter(StageScenario& scenario, uint32 envs)
@@ -78,7 +84,14 @@ std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::PullsEncounter::
 {
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
         RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Interrupt,
-        RewardTerm::Kill, RewardTerm::Clear, RewardTerm::HealthKept, RewardTerm::Death };
+        RewardTerm::Kill, RewardTerm::Clear, RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::Timeout,
+        RewardTerm::Stall, RewardTerm::Spacing };
+}
+
+bool Animus::Curriculum::PullsEncounter::SinglePack(Env const& env) const
+{
+    ArenaDefinition const& arena = _scenario.Arena(env);
+    return arena.Schedule == PullSchedule::SinglePack && !arena.Owner;
 }
 
 void Animus::Curriculum::PullsEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
@@ -553,10 +566,11 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
                 tally.KillTimeMs = env.EpisodeElapsedMs;
             }
 
-            ledger.Add(RewardTerm::Clear, tuning.Clear + tuning.FastClear * CombatReward::TimeLeftSince(env, engageMs));
+            ledger.Add(RewardTerm::Clear,
+                tuning.PackClear + tuning.FastClear * CombatReward::TimeLeftSince(env, engageMs));
         }
 
-        ledger.Add(RewardTerm::HealthKept, tuning.HealthKept * healthKept);
+        ledger.Add(RewardTerm::HealthKept, (SinglePack(env) ? tuning.PackHealthKept : tuning.HealthKept) * healthKept);
     }
 
     if (!tally.DeathCounted && !bot->IsAlive())
@@ -566,6 +580,35 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
         tally.DeathMs = env.EpisodeElapsedMs;
         ++tally.Deaths;
         ledger.Add(RewardTerm::Death, -(Gauntlet(env) ? tuning.GauntletDeath : tuning.PackDeath));
+    }
+
+    if (!SinglePack(env))
+        return;
+
+    // A single pack is won or lost, as the duel is. Standing off is charged as it happens once the grace is gone, a
+    // ranged spec is charged for being hit in melee reach, and running out the clock is a lost fight.
+    if (bot->IsAlive() && !tally.Killed)
+    {
+        float const seconds = float(_scenario.DecisionMs()) / 1000.0f;
+        if (!pulls.PullEngaged && env.EpisodeElapsedMs > tuning.StallGraceMs)
+            ledger.Add(RewardTerm::Stall, -tuning.Stall * seconds);
+
+        if (seat.L && seat.L->Profile->Specs[seat.Spec].Range != RangeBand::Melee)
+        {
+            bool meleed = false;
+            for (uint32 slot = 0; slot < env.Targets.size() && !meleed; ++slot)
+                if (Unit* enemy = env.FindTargetUnit(slot); enemy && enemy->IsAlive())
+                    meleed = enemy->GetVictim() == bot && enemy->IsWithinMeleeRange(bot);
+
+            if (meleed)
+                ledger.Add(RewardTerm::Spacing, -tuning.Spacing * seconds);
+        }
+    }
+
+    if (!tally.Killed && !tally.Died && !tally.TimedOut && TimeIsUp(env))
+    {
+        tally.TimedOut = true;
+        ledger.Add(RewardTerm::Timeout, -tuning.Timeout);
     }
 }
 
@@ -598,9 +641,13 @@ bool Animus::Curriculum::PullsEncounter::IsTerminal(Env const& env) const
 {
     // With an owner nobody's death ends the episode (they stand up after the pull), so letting the owner die is
     // never a way out of the penalties. Alone, a death ends it once no resurrection of its own is left to wait for.
+    // A single pack also ends on its clock, as a lost fight rather than a cut-off the critic bootstraps across.
     if (_scenario.Arena(env).Owner)
         return false;
 
     bool const dead = _scenario.DeadForGood(env, 0);
-    return Gauntlet(env) ? dead : _scenario.Data(env).Seats[0].Combat.Killed || dead;
+    if (Gauntlet(env))
+        return dead;
+
+    return _scenario.Data(env).Seats[0].Combat.Killed || dead || TimeIsUp(env);
 }
