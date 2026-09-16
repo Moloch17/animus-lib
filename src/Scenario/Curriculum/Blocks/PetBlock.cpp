@@ -299,6 +299,22 @@ Creature* Animus::Curriculum::PetBlock::FindPet(Player* bot)
     return bot ? bot->GetGuardianPet() : nullptr;
 }
 
+void Animus::Curriculum::PetBlock::DefaultStance(Creature* pet, ObjectGuid& lastPet)
+{
+    if (!pet)
+    {
+        lastPet.Clear();
+        return;
+    }
+
+    if (pet->GetGUID() == lastPet)
+        return;
+
+    lastPet = pet->GetGUID();
+    if (pet->IsAlive() && pet->HasReactState(REACT_PASSIVE))
+        pet->SetReactState(REACT_DEFENSIVE);
+}
+
 Animus::Curriculum::BlockSize Animus::Curriculum::PetBlock::Size(Layout const& layout) const
 {
     if (!HasPet(layout.Profile->Class))

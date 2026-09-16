@@ -149,7 +149,8 @@ namespace Animus::Curriculum
         uint32 PetStayingMs = 0;
         bool PetDied = false;                   // a pet the seat had died this episode
         float LastPetHealth = 0.0f;             // the pet's health at the last decision (0 = no pet)
-        uint32 Revives = 0;                     // dead allies (owner, teammates) the seat resurrected
+        ObjectGuid LastPetGuid;                 // the pet given its default stance (PetBlock::DefaultStance)
+        uint32 Revives = 0;                   // dead allies (owner, teammates) the seat resurrected
         bool StepRevivedAlly = false;           // an ally the seat resurrected stood up this decision
 
         // Pacing (CurriculumTuning::ActionTuning) and what the seat has been doing, on the episode clock (sized to the
@@ -192,6 +193,7 @@ namespace Animus::Curriculum
             PetStayingMs = 0;
             PetDied = false;
             LastPetHealth = 0.0f;
+            LastPetGuid.Clear();
             Revives = 0;
             StepRevivedAlly = false;
             Memory.Reset(0);

@@ -22,6 +22,7 @@
 #include "Block.h"
 
 class Creature;
+class ObjectGuid;
 class Player;
 
 namespace Animus::Curriculum
@@ -111,6 +112,12 @@ namespace Animus::Curriculum
         [[nodiscard]] static bool HasPet(uint8 playerClass);
         /// The bot's controllable pet, if one is out.
         [[nodiscard]] static Creature* FindPet(Player* bot);
+
+        /// Once per pet (`lastPet` remembers the one already seen): a pet that came out passive starts defensive, as
+        /// a player's does. A new pet's CharmInfo sets it passive, and a player's summon then loads the stance saved
+        /// with the pet, which a bot has none of: stage1_duel's warlock demons stayed passive all fight and ignored
+        /// the attack orders sent to them. A stance chosen after this one is left alone.
+        static void DefaultStance(Creature* pet, ObjectGuid& lastPet);
 
         [[nodiscard]] static PetKind KindOf(Creature const* pet);
     };

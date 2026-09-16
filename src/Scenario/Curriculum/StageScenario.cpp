@@ -1587,6 +1587,7 @@ float Animus::Curriculum::StageScenario::SeatReward(Env& env, uint32 seatIndex)
     if ((pet && !pet->IsAlive()) || (!pet && seat.LastPetHealth > 0.0f && seat.LastPetHealth < 0.1f))
         seat.PetDied = true;
     seat.LastPetHealth = pet && pet->IsAlive() ? std::max(0.001f, pet->GetHealthPct() / 100.0f) : 0.0f;
+    PetBlock::DefaultStance(pet, seat.LastPetGuid);
 
     // What the pet does while it is out.
     if (pet && pet->IsAlive())

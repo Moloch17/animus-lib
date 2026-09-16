@@ -118,6 +118,27 @@ namespace
         return std::nullopt;
     }
 
+    /// While the pet attacks the target: its first allowed damaging ability, as autocast would. Pets no longer
+    /// autocast, and an Imp or a Water Elemental cannot melee (PetAI::_canMeleeAttack), so without this they do
+    /// nothing.
+    std::optional<int32> PetDamage(Row const& row, Layout const& layout)
+    {
+        if (!row.Has(BlockId::Pet) || !PetBlock::HasPet(layout.Profile->Class)
+            || row.Obs(BlockId::Pet, PetBlock::OBS_ATTACKING_TARGET) == 0.0f)
+            return std::nullopt;
+
+        for (uint32 slot = 0; slot < PetBlock::ABILITY_SLOTS; ++slot)
+        {
+            uint32 const first = PetBlock::OBS_SLOT_FIRST + slot * PetBlock::SLOT_FEATURES;
+            if (row.Obs(BlockId::Pet, first + PetBlock::SLOT_DAMAGE) > 0.0f
+                && row.Obs(BlockId::Pet, first + PetBlock::SLOT_POSITIVE) == 0.0f)
+                if (std::optional<int32> cast = row.Allowed(BlockId::Pet, PetBlock::ACTION_ABILITY_FIRST + slot))
+                    return cast;
+        }
+
+        return std::nullopt;
+    }
+
     /// The seat's spec, read from the core block's spec one-hot; null if none is set.
     SpecProfile const* SpecOf(Row const& row, Layout const& layout)
     {
@@ -454,6 +475,8 @@ int32 Animus::Curriculum::Baselines::Choose(std::string const& policy, Layout co
     {
         if (std::optional<int32> action = Fight(row, layout))
             return *action;
+        if (std::optional<int32> ability = PetDamage(row, layout))
+            return *ability;
         if (std::optional<int32> spell = Rotation(row, layout))
             return *spell;
         return 0;
