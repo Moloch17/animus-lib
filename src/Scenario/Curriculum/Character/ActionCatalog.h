@@ -32,7 +32,8 @@ namespace Animus::Curriculum
     class TalentBuilder;
 
     /// The fixed action space of one class: every spell of its own kit any of its races can know by level 80
-    /// (trainer spells, starting spells, racials, active talents) -- combat spells, then trinket uses, then its
+    /// (trainer spells, starting spells, racials, active talents, and the spells those teach) -- combat spells, then
+    /// the use effects of its trinkets, weapon and off-hand item, then its
     /// tactical spells (crowd control, interrupts) and its sustain spells (heals, shields) cast on itself.
     ///
     /// A spell action stands for a whole rank chain and casts the highest rank the bot knows. Actions
@@ -46,7 +47,7 @@ namespace Animus::Curriculum
             Noop,
             CancelQueued,       // cancel a queued on-next-swing ability
             Spell,
-            Trinket,
+            Trinket,            // the use effect of the item in EquipmentSlot (trinkets, main hand, off hand)
             Soulstone,          // warlocks: use the soulstone in the bags on a friendly player
         };
 
@@ -74,7 +75,8 @@ namespace Animus::Curriculum
 
         ActionCatalog(uint8 playerClass, ClassKit const& kit, TalentBuilder const& talents);
 
-        /// The core block's actions: no-op, cancel-queued, combat spells, trinkets, tactical spells, sustain spells.
+        /// The core block's actions: no-op, cancel-queued, combat spells, equipped item uses, tactical spells, sustain
+        /// spells.
         /// A player fights with the whole kit, from the first stage on: a healer heals itself and a mage polymorphs.
         [[nodiscard]] std::vector<Action> const& Actions() const { return _actions; }
 

@@ -32,11 +32,12 @@ BUILDS = {
         tree(1, "Armored to the Teeth:3, Booming Voice:2, Cruelty:5, Unbridled Wrath:5, Commanding Presence:2")),
     ("warrior", "fury", 1): build(
         tree(1, "Armored to the Teeth:3, Cruelty:5, Unbridled Wrath:5, Commanding Presence:2,"
-                " Dual Wield Specialization:5, Enrage:5, Precision:3, Death Wish:1, Flurry:5, Bloodthirst:1,"
+                " Dual Wield Specialization:5, Enrage:5, Piercing Howl:1, Precision:3, Death Wish:1, Flurry:5,"
+                " Bloodthirst:1,"
                 " Intensify Rage:3, Improved Berserker Stance:5, Rampage:1, Bloodsurge:3, Heroic Fury:1,"
                 " Unending Fury:5, Titan's Grip:1"),
         tree(0, "Improved Heroic Strike:3, Improved Rend:2, Improved Charge:2, Tactical Mastery:3, Anger Management:1,"
-                " Impale:2, Deep Wounds:3, Improved Overpower:1")),
+                " Impale:2, Deep Wounds:3")),
     ("warrior", "protection", 2): build(
         tree(2, "Improved Thunder Clap:3, Shield Specialization:2, Incite:3, Anticipation:2, Toughness:5,"
                 " Last Stand:1, Improved Revenge:2, Shield Mastery:2, Improved Spell Reflection:2, Puncture:3,"
@@ -79,16 +80,18 @@ BUILDS = {
     ("hunter", "marksmanship", 1): build(
         tree(1, "Focused Aim:2, Lethal Shots:5, Careful Aim:3, Mortal Shots:5, Go for the Throat:2,"
                 " Improved Arcane Shot:3, Aimed Shot:1, Rapid Killing:2, Improved Stings:3, Efficiency:5,"
-                " Readiness:1, Barrage:3, Ranged Weapon Specialization:3, Piercing Shots:3, Trueshot Aura:1,"
+                " Readiness:1, Concussive Barrage:2, Barrage:3, Ranged Weapon Specialization:3, Piercing Shots:3,"
+                " Trueshot Aura:1,"
                 " Master Marksman:5, Silencing Shot:1, Improved Steady Shot:3, Marked for Death:5, Chimera Shot:1"),
-        tree(0, "Improved Aspect of the Hawk:5, Focused Fire:2"),
-        tree(2, "Improved Tracking:5, Survival Instincts:2")),
+        tree(0, "Improved Aspect of the Hawk:5, Focused Fire:1"),
+        tree(2, "Improved Tracking:5, Survival Instincts:1")),
     ("hunter", "survival", 2): build(
-        tree(2, "Improved Tracking:5, Survival Instincts:2, Trap Mastery:3, Survivalist:5, Survival Tactics:2,"
+        tree(2, "Improved Tracking:5, Survival Instincts:2, Trap Mastery:3, Entrapment:3, Survivalist:5,"
+                " Survival Tactics:2,"
                 " T.N.T.:3, Lock and Load:3, Hunter vs. Wild:3, Killer Instinct:3, Lightning Reflexes:5,"
                 " Expose Weakness:3, Wyvern Sting:1, Thrill of the Hunt:3, Master Tactician:5, Noxious Stings:3,"
                 " Black Arrow:1, Sniper Training:3, Hunting Party:3, Explosive Shot:1"),
-        tree(1, "Lethal Shots:5, Careful Aim:3, Mortal Shots:2, Go for the Throat:2, Improved Arcane Shot:2")),
+        tree(1, "Lethal Shots:5, Careful Aim:3, Mortal Shots:2, Go for the Throat:1")),
     ("rogue", "assassination", 0): build(
         tree(0, "Improved Eviscerate:2, Malice:5, Ruthlessness:3, Puncturing Wounds:3, Lethality:5, Vigor:1,"
                 " Vile Poisons:3, Improved Poisons:5, Cold Blood:1, Quick Recovery:2, Seal Fate:5, Murder:2,"
@@ -106,9 +109,9 @@ BUILDS = {
         tree(2, "Relentless Strikes:5, Opportunity:2, Camouflage:3, Elusiveness:2, Serrated Blades:3, Initiative:3,"
                 " Improved Ambush:2, Preparation:1, Dirty Deeds:2, Hemorrhage:1, Heightened Senses:2,"
                 " Master of Subtlety:3, Deadliness:5, Premeditation:1, Enveloping Shadows:3, Cheat Death:3,"
-                " Sinister Calling:5, Honor Among Thieves:3, Shadowstep:1, Filthy Tricks:2,"
+                " Sinister Calling:5, Honor Among Thieves:3, Shadowstep:1, Filthy Tricks:2, Waylay:2,"
                 " Slaughter from the Shadows:5, Shadow Dance:1"),
-        tree(0, "Malice:5, Ruthlessness:3, Puncturing Wounds:3, Lethality:2")),
+        tree(0, "Malice:5, Ruthlessness:3, Puncturing Wounds:3")),
     ("priest", "discipline", 0): build(
         tree(0, "Twin Disciplines:5, Improved Inner Fire:3, Improved Power Word: Fortitude:2, Meditation:3,"
                 " Inner Focus:1, Improved Power Word: Shield:3, Mental Agility:3, Mental Strength:5, Soul Warding:1,"
@@ -126,10 +129,11 @@ BUILDS = {
     ("priest", "shadow", 2): build(
         tree(2, "Spirit Tap:3, Improved Spirit Tap:2, Darkness:5, Shadow Affinity:2, Improved Shadow Word: Pain:2,"
                 " Shadow Focus:3, Improved Mind Blast:5, Mind Flay:1, Shadow Reach:2, Shadow Weaving:3,"
-                " Vampiric Embrace:1, Focused Mind:3, Mind Melt:2, Improved Devouring Plague:3, Shadowform:1,"
+                " Vampiric Embrace:1, Improved Psychic Scream:2, Silence:1, Focused Mind:3, Mind Melt:2,"
+                " Improved Devouring Plague:3, Shadowform:1,"
                 " Shadow Power:5, Improved Shadowform:2, Misery:3, Vampiric Touch:1, Pain and Suffering:3,"
                 " Twisted Faith:5, Dispersion:1"),
-        tree(0, "Twin Disciplines:5, Improved Inner Fire:3, Improved Power Word: Fortitude:2, Meditation:3")),
+        tree(0, "Twin Disciplines:5, Improved Inner Fire:3, Improved Power Word: Fortitude:2")),
     ("deathknight", "blood", 0): build(
         tree(0, "Butchery:2, Blade Barrier:3, Bladed Armor:5, Rune Tap:1, Death Rune Mastery:3,"
                 " Two-Handed Weapon Specialization:1, Improved Rune Tap:3, Spell Deflection:3, Vendetta:3,"
@@ -142,10 +146,11 @@ BUILDS = {
     ("deathknight", "frost", 1): build(
         tree(1, "Improved Icy Touch:3, Runic Power Mastery:2, Black Ice:5, Nerves of Cold Steel:3, Icy Talons:5,"
                 " Lichborne:1, Annihilation:3, Killing Machine:5, Chill of the Grave:2, Endless Winter:2,"
-                " Deathchill:1, Improved Icy Talons:1, Merciless Combat:2, Rime:3, Blood of the North:3,"
+                " Deathchill:1, Improved Icy Talons:1, Merciless Combat:2, Hungering Cold:1, Rime:3,"
+                " Blood of the North:3,"
                 " Unbreakable Armor:1, Threat of Thassarian:3, Frost Strike:1, Guile of Gorefiend:3,"
                 " Tundra Stalker:5, Howling Blast:1, Glacier Rot:1"),
-        tree(0, "Subversion:3, Blade Barrier:2, Bladed Armor:5, Dark Conviction:5")),
+        tree(0, "Subversion:3, Blade Barrier:2, Bladed Armor:5, Dark Conviction:4")),
     ("deathknight", "unholy", 2): build(
         tree(2, "Vicious Strikes:2, Virulence:3, Epidemic:2, Morbidity:3, Ravenous Dead:1, Outbreak:3, Necrosis:5,"
                 " Blood-Caked Blade:3, Night of the Dead:2, Unholy Blight:1, Impurity:5, Reaping:3,"
@@ -197,10 +202,11 @@ BUILDS = {
                 " Student of the Mind:1, Torment the Weak:3")),
     ("warlock", "affliction", 0): build(
         tree(0, "Improved Curse of Agony:2, Suppression:3, Improved Corruption:5, Improved Life Tap:2, Soul Siphon:2,"
-                " Amplify Curse:1, Grim Reach:1, Nightfall:2, Empowered Corruption:3, Shadow Embrace:5,"
+                " Amplify Curse:1, Grim Reach:1, Nightfall:2, Empowered Corruption:3, Curse of Exhaustion:1,"
+                " Shadow Embrace:5,"
                 " Siphon Life:1, Improved Felhunter:2, Shadow Mastery:5, Eradication:3, Contagion:5, Malediction:3,"
                 " Death's Embrace:3, Unstable Affliction:1, Pandemic:1, Everlasting Affliction:5, Haunt:1"),
-        tree(2, "Improved Shadow Bolt:5, Bane:5, Ruin:5")),
+        tree(2, "Improved Shadow Bolt:5, Bane:5, Ruin:4")),
     ("warlock", "demonology", 1): build(
         tree(1, "Demonic Embrace:3, Fel Synergy:2, Demonic Brutality:3, Fel Vitality:3, Soul Link:1,"
                 " Fel Domination:1, Demonic Aegis:3, Unholy Power:5, Master Summoner:2, Mana Feed:1,"
@@ -228,9 +234,9 @@ BUILDS = {
                 " Feral Swiftness:2, Shredding Attacks:2, Predatory Strikes:3, Primal Fury:2, Primal Precision:2,"
                 " Feral Charge:1, Heart of the Wild:5, Survival of the Fittest:3, Leader of the Pack:1,"
                 " Improved Leader of the Pack:2, Predatory Instincts:3, King of the Jungle:3, Mangle:1,"
-                " Improved Mangle:3, Rend and Tear:5, Primal Gore:1, Berserk:1, Feral Aggression:1"),
+                " Improved Mangle:3, Infected Wounds:3, Rend and Tear:5, Primal Gore:1, Berserk:1, Feral Aggression:1"),
         tree(2, "Improved Mark of the Wild:2, Furor:5, Natural Shapeshifter:3, Omen of Clarity:1,"
-                " Master Shapeshifter:2, Nature's Focus:3")),
+                " Master Shapeshifter:2")),
     ("druid", "feral_bear", 1): build(
         tree(1, "Ferocity:5, Feral Instinct:3, Savage Fury:2, Thick Hide:3, Survival Instincts:1,"
                 " Sharpened Claws:3, Predatory Strikes:3, Primal Fury:2, Primal Precision:2, Feral Charge:1,"

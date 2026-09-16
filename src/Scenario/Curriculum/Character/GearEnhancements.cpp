@@ -66,6 +66,9 @@ namespace
     constexpr uint16 ENCHANT_SKILL_SPREAD = 20;
 
     constexpr uint32 POISON_DURATION_MS = 3600 * IN_MILLISECONDS;   // Spell::EffectEnchantItemTmp
+    /// Percent of rogues with Crippling Poison in the off hand instead of Deadly Poison: a slowed opponent is one
+    /// that cannot run from, or catch up with, the rogue, and a rogue that never has it never learns to use it.
+    constexpr int32 CRIPPLING_POISON_CHANCE = 50;
     constexpr uint8 GEM_EPIC_LEVEL = 80;
 
     /// The enchanting skill of the enchants a player of `level` can buy: the enchanting skill a character of the
@@ -383,9 +386,12 @@ void Animus::Curriculum::GearBuilder::ApplyPoisons(Player* bot) const
         return enchantId;
     };
 
-    // Instant Poison in the main hand, Deadly Poison in the off hand (or the main hand, before Instant Poison).
+    // Instant Poison in the main hand, Deadly Poison in the off hand (or the main hand, before Instant Poison); half
+    // the rogues that can have it put Crippling Poison in the off hand instead.
     uint32 const instant = best(_instantPoisons);
+    uint32 const crippling = best(_cripplingPoisons);
     uint32 const deadly = best(_deadlyPoisons);
+    uint32 const offHandPoison = crippling && roll_chance_i(CRIPPLING_POISON_CHANCE) ? crippling : deadly;
     Item* mainHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
     Item* offHand = bot->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
 
@@ -397,7 +403,7 @@ void Animus::Curriculum::GearBuilder::ApplyPoisons(Player* bot) const
     };
 
     poison(mainHand, instant ? instant : deadly);
-    poison(offHand, deadly ? deadly : instant);
+    poison(offHand, offHandPoison ? offHandPoison : instant);
 }
 
 void Animus::Curriculum::GearBuilder::EquipQuiver(Player* bot) const

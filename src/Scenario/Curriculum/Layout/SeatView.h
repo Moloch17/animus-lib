@@ -145,6 +145,7 @@ namespace Animus::Curriculum
     {
         uint32 SpellCasts = 0;
         uint32 TrinketUses = 0;
+        uint32 ItemUses = 0;                        // use effects of an equipped weapon or off-hand item
         uint32 SustainCasts = 0;
         uint32 FoodUsed = 0;
         uint32 DrinkUsed = 0;

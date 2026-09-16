@@ -484,8 +484,10 @@ Animus::Curriculum::GearBuilder::GearBuilder(ClassRoleProfile const& profile, Cl
         else if (_class == CLASS_ROGUE && proto.Class == ITEM_CLASS_CONSUMABLE)
         {
             // Rogue poisons, by name: the enchant their use spell puts on a weapon.
-            bool const instant = proto.Name1.starts_with("Instant Poison");
-            if (!instant && !proto.Name1.starts_with("Deadly Poison"))
+            std::vector<std::pair<uint8, uint32>>* poisons = proto.Name1.starts_with("Instant Poison")
+                ? &_instantPoisons : proto.Name1.starts_with("Deadly Poison") ? &_deadlyPoisons
+                : proto.Name1.starts_with("Crippling Poison") ? &_cripplingPoisons : nullptr;
+            if (!poisons)
                 continue;
 
             for (_Spell const& spell : proto.Spells)
@@ -496,13 +498,12 @@ Animus::Curriculum::GearBuilder::GearBuilder(ClassRoleProfile const& profile, Cl
 
                 for (SpellEffectInfo const& effect : info->GetEffects())
                     if (effect.Effect == SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY && effect.MiscValue > 0)
-                        (instant ? _instantPoisons : _deadlyPoisons).emplace_back(RequiredLevelOf(&proto),
-                            uint32(effect.MiscValue));
+                        poisons->emplace_back(RequiredLevelOf(&proto), uint32(effect.MiscValue));
             }
         }
     }
 
-    for (auto* list : { &_arrows, &_bullets, &_quivers, &_instantPoisons, &_deadlyPoisons })
+    for (auto* list : { &_arrows, &_bullets, &_quivers, &_instantPoisons, &_deadlyPoisons, &_cripplingPoisons })
         std::sort(list->begin(), list->end());
 }
 

@@ -444,6 +444,7 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("equipped_items", [seat](Env const& env, uint32 index) { return float(seat(env, index).EquippedItems); });
     _info.Add("spell_casts", [seat](Env const& env, uint32 index) { return float(seat(env, index).SpellCasts); });
     _info.Add("trinket_uses", [seat](Env const& env, uint32 index) { return float(seat(env, index).TrinketUses); });
+    _info.Add("item_uses", [seat](Env const& env, uint32 index) { return float(seat(env, index).ItemUses); });
     _info.Add("class", [seat](Env const& env, uint32 index)
     {
         Layout const* layout = seat(env, index).L;
@@ -674,6 +675,12 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
         return combat.FightMs ? float(combat.SnaredMs) / float(combat.FightMs) : 0.0f;
     });
     _info.Add("roots_applied", [tally](Env const& env, uint32 index) { return float(tally(env, index).RootsApplied); });
+    // Feign deaths, and those after which the opponent went home to evade at full health.
+    _info.Add("feign_deaths", [tally](Env const& env, uint32 index) { return float(tally(env, index).FeignDeaths); });
+    _info.Add("feign_death_resets", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).FeignDeathResets);
+    });
     _info.Add("snares_applied", [tally](Env const& env, uint32 index)
     {
         return float(tally(env, index).SnaresApplied);
@@ -755,6 +762,10 @@ void Animus::Curriculum::StageScenario::WriteStageFiles(StageSettings const& set
         boost::json::object& entry = layouts[layout.Profile->Name].emplace_object();
         entry["obs_dim"] = layout.ObsDim;
         entry["num_actions"] = layout.NumActions;
+
+        boost::json::array& actionNames = entry["action_names"].emplace_array();
+        for (std::string const& name : layout.ActionNames())
+            actionNames.push_back(boost::json::string(name));
 
         boost::json::array& spans = entry["blocks"].emplace_array();
         for (BlockId id : layout.Blocks)
@@ -1417,6 +1428,7 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     seat.TargetSlot = view.TargetSlot;
     seat.SpellCasts += result.SpellCasts;
     seat.TrinketUses += result.TrinketUses;
+    seat.ItemUses += result.ItemUses;
     seat.ConsumablesUsed += result.ConsumablesUsed;
     seat.SelfResurrections += result.SelfResurrected ? 1 : 0;
     seat.PetAbilities += result.PetAbilities;

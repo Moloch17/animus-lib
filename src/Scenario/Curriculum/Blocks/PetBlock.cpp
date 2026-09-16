@@ -28,6 +28,7 @@
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "StringFormat.h"
 #include "TemporarySummon.h"
 #include <algorithm>
 #include <array>
@@ -189,6 +190,12 @@ namespace
         return spell;
     }
 
+    /// The seat or its pet is in combat.
+    bool Fighting(SeatView const& view, Creature const* pet)
+    {
+        return view.Bot->IsInCombat() || pet->IsInCombat();
+    }
+
     bool IsAllowed(SeatView const& view, Creature* pet, std::vector<Ability> const& abilities, uint32 action)
     {
         if (!pet || !pet->IsAlive() || !view.Bot->IsAlive())
@@ -203,10 +210,13 @@ namespace
                 return pet->GetReactState() != REACT_DEFENSIVE;
             case PetBlock::ACTION_AGGRESSIVE:
                 return pet->GetReactState() != REACT_AGGRESSIVE;
+            // Not while fighting: follow and stay call the pet off its target, and stage1_duel's warlocks cycled
+            // attack, follow and stay eight times a fight, their pets never landing a hit. Later stages may want
+            // them back (positioning a pet in a group).
             case PetBlock::ACTION_FOLLOW:
-                return charmInfo && !charmInfo->HasCommandState(COMMAND_FOLLOW);
+                return charmInfo && !charmInfo->HasCommandState(COMMAND_FOLLOW) && !Fighting(view, pet);
             case PetBlock::ACTION_STAY:
-                return charmInfo && !charmInfo->HasCommandState(COMMAND_STAY);
+                return charmInfo && !charmInfo->HasCommandState(COMMAND_STAY) && !Fighting(view, pet);
             default:
                 break;
         }
@@ -265,6 +275,17 @@ Animus::Curriculum::PetBlock::PetKind Animus::Curriculum::PetBlock::KindOf(Creat
             return PetKind(KIND_FEROCITY + uint32(family->petTalentType));
 
     return KIND_OTHER;
+}
+
+std::string Animus::Curriculum::PetBlock::ActionName(Layout const& /*layout*/, uint32 local) const
+{
+    static constexpr std::array<char const*, ACTION_COUNT - ACTION_PASSIVE> ORDERS =
+        { "pet_passive", "pet_defensive", "pet_aggressive", "pet_follow", "pet_stay" };
+
+    // Ability slots hold whatever the current pet has, most valuable kind first (Abilities).
+    if (local < ACTION_PASSIVE)
+        return Acore::StringFormat("pet_ability_{}", local);
+    return local < ACTION_COUNT ? ORDERS[local - ACTION_PASSIVE] : std::string();
 }
 
 bool Animus::Curriculum::PetBlock::HasPet(uint8 playerClass)

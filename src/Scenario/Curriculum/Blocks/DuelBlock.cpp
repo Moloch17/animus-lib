@@ -29,8 +29,10 @@
 #include "Player.h"
 #include "Spell.h"
 #include "SpellMgr.h"
+#include "StringFormat.h"
 #include "Supplies.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace
@@ -183,6 +185,20 @@ Animus::Curriculum::BlockSize Animus::Curriculum::DuelBlock::Size(Layout const& 
 {
     uint32 const stable = StableSlots(layout);
     return { OBS_COUNT_WITHOUT_STABLE + stable * STABLE_FEATURES, ACTION_COUNT_WITHOUT_STABLE + stable };
+}
+
+std::string Animus::Curriculum::DuelBlock::ActionName(Layout const& /*layout*/, uint32 local) const
+{
+    static constexpr std::array<char const*, ACTION_COUNT_WITHOUT_STABLE> NAMES =
+    {
+        "move_to_target", "move_behind", "move_to_range", "back_off", "stop", "start_attack", "pet_attack",
+        "stop_casting", "cancel_form", "health_potion", "mana_potion", "healthstone", "bandage", "soulstone_self",
+        "self_resurrect", "break_line_of_sight"
+    };
+
+    if (local < NAMES.size())
+        return NAMES[local];
+    return Acore::StringFormat("call_beast_{}", local - ACTION_CALL_BEAST_FIRST);
 }
 
 void Animus::Curriculum::DuelBlock::DescribeManifest(Layout const& layout, boost::json::object& block) const

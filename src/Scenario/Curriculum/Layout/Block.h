@@ -23,6 +23,7 @@
 #include <array>
 #include <boost/json/fwd.hpp>
 #include <optional>
+#include <string>
 #include <string_view>
 
 /*
@@ -117,6 +118,10 @@ namespace Animus::Curriculum
         /// Whether action `local` is a movement order, which is paced by CurriculumTuning::ActionTuning::MoveRepeatMs
         /// rather than RepeatMs: steering has to be re-issued more often than a spell or an order.
         [[nodiscard]] virtual bool IsMovement(uint32 /*local*/) const { return false; }
+
+        /// A readable name for action `local`, for the manifest and the evaluation's per-action counts; empty for
+        /// the default, "<block>_<local>".
+        [[nodiscard]] virtual std::string ActionName(Layout const& /*layout*/, uint32 /*local*/) const { return {}; }
     };
 
     /// The block implementation of `id`.

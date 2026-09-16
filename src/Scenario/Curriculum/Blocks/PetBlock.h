@@ -100,6 +100,7 @@ namespace Animus::Curriculum
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
+        [[nodiscard]] std::string ActionName(Layout const& layout, uint32 local) const override;
 
         /// Whether the class has a pet this block controls.
         [[nodiscard]] static bool HasPet(uint8 playerClass);

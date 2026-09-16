@@ -87,6 +87,12 @@ uint32 Animus::Curriculum::CoreBlock::TreeObsFirst(Layout const& layout)
     return TalentObsFirst(layout) + uint32(layout.Assets->Talents->Talents().size());
 }
 
+std::string Animus::Curriculum::CoreBlock::ActionName(Layout const& layout, uint32 local) const
+{
+    std::vector<ActionCatalog::Action> const& actions = layout.Catalog().Actions();
+    return local < actions.size() ? actions[local].Name : std::string();
+}
+
 void Animus::Curriculum::CoreBlock::DescribeManifest(Layout const& layout, boost::json::object& block) const
 {
     block["action_features"] = ACTION_FEATURES;
@@ -265,7 +271,8 @@ void Animus::Curriculum::CoreBlock::Apply(SeatView& view, uint32 local, SeatActi
 
             bot->CastItemUseSpell(item, Encoding::TargetsFor(info, bot, view.Target), 1, 0);
             if (bot->HasSpellCooldown(info->Id))
-                ++result.TrinketUses;
+                ++(def.EquipmentSlot == EQUIPMENT_SLOT_TRINKET1 || def.EquipmentSlot == EQUIPMENT_SLOT_TRINKET2
+                    ? result.TrinketUses : result.ItemUses);
             return;
         }
         case ActionCatalog::Kind::Spell:

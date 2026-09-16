@@ -168,6 +168,7 @@ namespace Animus::Curriculum
         std::vector<std::pair<uint8, uint32>> _quivers;     // hunters: quivers and ammo pouches, sorted
         std::vector<std::pair<uint8, uint32>> _instantPoisons;  // rogues: (required level, item), sorted
         std::vector<std::pair<uint8, uint32>> _deadlyPoisons;
+        std::vector<std::pair<uint8, uint32>> _cripplingPoisons;
     };
 }
 

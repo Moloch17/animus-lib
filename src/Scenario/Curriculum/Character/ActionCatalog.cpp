@@ -249,6 +249,10 @@ bool Animus::Curriculum::ActionCatalog::IsCombatSpell(SpellInfo const* info)
             case SPELL_EFFECT_STEAL_BENEFICIAL_BUFF:
                 useful = true;
                 break;
+            case SPELL_EFFECT_TRIGGER_MISSILE:  // a missile whose spell does the work when it lands
+                useful |= effect.TriggerSpell != info->Id
+                    && IsCombatSpell(sSpellMgr->GetSpellInfo(effect.TriggerSpell));
+                break;
             case SPELL_EFFECT_APPLY_AURA:
             case SPELL_EFFECT_APPLY_AREA_AURA_PARTY:
             case SPELL_EFFECT_APPLY_AREA_AURA_RAID:
@@ -322,6 +326,22 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
             if (rankSpell)
                 candidates.insert(rankSpell);
 
+    // What those spells teach when learned (Player::_addSpell learns a LEARN_SPELL effect's spell): the Feral Charge
+    // talent is Feral Charge - Bear and Feral Charge - Cat, and the talent itself is never cast.
+    std::vector<uint32> toTeach(candidates.begin(), candidates.end());
+    while (!toTeach.empty())
+    {
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(toTeach.back());
+        toTeach.pop_back();
+        if (!info)
+            continue;
+
+        for (SpellEffectInfo const& effect : info->GetEffects())
+            if (effect.Effect == SPELL_EFFECT_LEARN_SPELL && effect.TriggerSpell
+                && candidates.insert(effect.TriggerSpell).second)
+                toTeach.push_back(effect.TriggerSpell);
+    }
+
     // Rank chains by first rank, for each kind; a chain belongs to the first kind any of its ranks fits
     // (combat, then tactical, then sustain), so the lists never overlap.
     std::set<uint32> chains;
@@ -369,6 +389,10 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
 
     _actions.push_back({ Kind::Trinket, "trinket_1", 0, EQUIPMENT_SLOT_TRINKET1 });
     _actions.push_back({ Kind::Trinket, "trinket_2", 0, EQUIPMENT_SLOT_TRINKET2 });
+    // Weapons, shields and held books with a use effect (Rituals of the New Moon, Arcanite Ripper): about 70 of the
+    // items the gear pools draw from, whose effects were otherwise out of reach.
+    _actions.push_back({ Kind::Trinket, "use_main_hand", 0, EQUIPMENT_SLOT_MAINHAND });
+    _actions.push_back({ Kind::Trinket, "use_off_hand", 0, EQUIPMENT_SLOT_OFFHAND });
 
     for (uint32 firstRank : tacticalChains)
         _tactical.push_back(spellAction(firstRank, Group::Tactical));
@@ -433,6 +457,10 @@ bool Animus::Curriculum::ActionCatalog::IsTacticalSpell(SpellInfo const* info)
                 break;
             case SPELL_EFFECT_DISPEL:
                 tactical |= !info->IsPositive();
+                break;
+            case SPELL_EFFECT_TRIGGER_MISSILE:  // Freezing Arrow: a missile that drops a Freezing Trap where it lands
+                tactical |= effect.TriggerSpell != info->Id
+                    && IsTacticalSpell(sSpellMgr->GetSpellInfo(effect.TriggerSpell));
                 break;
             case SPELL_EFFECT_APPLY_AURA:
             case SPELL_EFFECT_PERSISTENT_AREA_AURA:

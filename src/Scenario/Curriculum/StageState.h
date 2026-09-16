@@ -86,6 +86,13 @@ namespace Animus::Curriculum
         uint32 SnaresApplied = 0;
         bool WasRooted = false;
         bool WasSnared = false;
+        // Feign death (one-on-one arenas): how often the bot feigned, and how often its opponent then went home to
+        // evade (and heal to full) because nothing else held it, rather than turning on the pet.
+        uint32 FeignDeaths = 0;
+        uint32 FeignDeathResets = 0;
+        bool WasFeigning = false;
+        uint32 FeignEndMs = 0;                  // episode time the last feign ended (or now, while feigning)
+        bool FeignResetCounted = false;         // the last feign's evade has been counted
     };
 
     /// One learned agent: its character, as built for the episode, and its episode totals.
@@ -116,6 +123,7 @@ namespace Animus::Curriculum
         float LastStepDamageTaken = 0.0f;
         uint32 SpellCasts = 0;
         uint32 TrinketUses = 0;
+        uint32 ItemUses = 0;
         bool InCombat = false;
         uint32 CombatStartMs = 0;               // episode time the bot entered its current combat
         uint32 TargetSlot = 0;                  // the selected enemy (pulls)
@@ -167,6 +175,7 @@ namespace Animus::Curriculum
             LastStepDamageTaken = 0.0f;
             SpellCasts = 0;
             TrinketUses = 0;
+            ItemUses = 0;
             InCombat = false;
             CombatStartMs = 0;
             TargetSlot = 0;

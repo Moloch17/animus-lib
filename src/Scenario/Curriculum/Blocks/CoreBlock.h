@@ -81,6 +81,7 @@ namespace Animus::Curriculum
         [[nodiscard]] BlockId Id() const override { return BlockId::Core; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;
         void DescribeManifest(Layout const& layout, boost::json::object& block) const override;
+        [[nodiscard]] std::string ActionName(Layout const& layout, uint32 local) const override;
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
 

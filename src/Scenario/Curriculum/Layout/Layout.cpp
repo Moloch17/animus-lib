@@ -20,6 +20,7 @@
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "StageDefinition.h"
+#include "StringFormat.h"
 #include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
 #include <boost/json/serialize.hpp>
@@ -134,6 +135,23 @@ std::string Animus::Curriculum::Layout::ModelName() const
     return Profile->Name + Stage->Suffix;
 }
 
+std::vector<std::string> Animus::Curriculum::Layout::ActionNames() const
+{
+    std::vector<std::string> names(NumActions);
+    for (BlockId id : Blocks)
+    {
+        BlockSlice const& slice = Slice(id);
+        for (uint32 local = 0; local < slice.ActionCount && slice.ActionFirst + local < NumActions; ++local)
+        {
+            std::string name = GetBlock(id).ActionName(*this, local);
+            names[slice.ActionFirst + local] = name.empty()
+                ? Acore::StringFormat("{}_{}", BlockName(id), local) : std::move(name);
+        }
+    }
+
+    return names;
+}
+
 std::string Animus::Curriculum::Layout::Manifest() const
 {
     boost::json::object manifest;
@@ -145,6 +163,10 @@ std::string Animus::Curriculum::Layout::Manifest() const
     manifest["role"] = RoleName(PlayRole());
     manifest["obs_dim"] = ObsDim;
     manifest["num_actions"] = NumActions;
+
+    boost::json::array& actionNames = manifest["action_names"].emplace_array();
+    for (std::string const& name : ActionNames())
+        actionNames.push_back(boost::json::string(name));
 
     boost::json::array& specs = manifest["specs"].emplace_array();
     for (SpecProfile const& spec : Profile->Specs)

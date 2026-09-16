@@ -69,6 +69,9 @@ namespace Animus::Curriculum
         /// per block its name, observation and action spans and its own entries (spells, talents, slot counts).
         [[nodiscard]] std::string Manifest() const;
 
+        /// Every action's name, by layout action index (Block::ActionName).
+        [[nodiscard]] std::vector<std::string> ActionNames() const;
+
     private:
         uint32 _blockMask = 0;
     };

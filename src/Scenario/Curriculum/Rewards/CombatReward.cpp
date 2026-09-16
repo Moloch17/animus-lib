@@ -18,6 +18,7 @@
 
 #include "CombatReward.h"
 #include "EncoderSupport.h"
+#include "Creature.h"
 #include "Env.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
@@ -27,6 +28,9 @@
 
 namespace
 {
+    /// How soon after a feign death ends an opponent's evade still counts as caused by it.
+    constexpr uint32 FEIGN_RESET_WINDOW_MS = 3000;
+
     /// Whether `target` carries an aura of `type` from `bot` or from something `bot` owns (its pet, a totem).
     bool HasAuraFrom(Unit const* target, AuraType type, Player const* bot)
     {
@@ -220,6 +224,25 @@ void Animus::Curriculum::CombatReward::OneOnOne(StageScenario& scenario, Env con
             ++tally.SnaresApplied;
         tally.WasRooted = rooted;
         tally.WasSnared = snared;
+    }
+
+    // Feign death: a feign that leaves the opponent nothing to fight sends it home to evade at full health, within
+    // a few seconds of the feign ending.
+    bool const feigning = bot->IsAlive() && bot->HasAuraType(SPELL_AURA_FEIGN_DEATH);
+    if (feigning && !tally.WasFeigning)
+    {
+        ++tally.FeignDeaths;
+        tally.FeignResetCounted = false;
+    }
+    if (feigning)
+        tally.FeignEndMs = env.EpisodeElapsedMs;
+    tally.WasFeigning = feigning;
+
+    if (Creature const* creature = opponent->ToCreature(); creature && tally.FeignDeaths && !tally.FeignResetCounted
+        && creature->IsInEvadeMode() && env.EpisodeElapsedMs <= tally.FeignEndMs + FEIGN_RESET_WINDOW_MS)
+    {
+        ++tally.FeignDeathResets;
+        tally.FeignResetCounted = true;
     }
 
     if (!tally.Killed && !opponent->IsAlive())
