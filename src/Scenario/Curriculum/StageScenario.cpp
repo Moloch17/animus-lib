@@ -21,8 +21,10 @@
 #include "BotAccounts.h"
 #include "Config.h"
 #include "Containers.h"
+#include "CoreBlock.h"
 #include "Creature.h"
 #include "DBCStores.h"
+#include "DuelBlock.h"
 #include "EncoderSupport.h"
 #include "Encounters.h"
 #include "Env.h"
@@ -36,7 +38,9 @@
 #include "SeatCharacter.h"
 #include "SeatEncoder.h"
 #include "SpawnArea.h"
+#include "Spell.h"
 #include "SpellChecks.h"
+#include "SpellInfo.h"
 #include "StageDefinition.h"
 #include <cmath>
 #include "StringFormat.h"
@@ -154,7 +158,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     _spawnMapId(stage.MapId ? stage.MapId : settings.SpawnMapId),
     _spawnPoint(stage.MapId && !stage.SpawnPoints.empty() ? stage.SpawnPoints.front() : settings.SpawnPosition),
     _seatCount(stage.SeatCount()), _level(settings.Level),
-    _decisionScale(float(settings.DecisionMs) / REWARD_TUNING_MS)
+    _decisionScale(float(settings.DecisionMs) / REWARD_TUNING_MS), _decisionMs(settings.DecisionMs)
 {
     if (MapEntry const* mapEntry = sMapStore.LookupEntry(_spawnMapId))
         _continent = !mapEntry->Instanceable();
@@ -527,6 +531,57 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("self_resurrections", [seat](Env const& env, uint32 index)
     {
         return float(seat(env, index).SelfResurrections);
+    });
+
+    // Why a fight was not won, read off how it ended: which of the two ways it was lost, whether it ever started,
+    // how far the opponent was from dead and the bot from it, the form and power it ended in, and time the
+    // opponent was out of reach (evading) or out of sight.
+    _info.Add("timed_out", [tally](Env const& env, uint32 index) { return tally(env, index).TimedOut ? 1.0f : 0.0f; });
+    _info.Add("engaged", [tally](Env const& env, uint32 index) { return tally(env, index).Engaged ? 1.0f : 0.0f; });
+    _info.Add("engage_time", [tally](Env const& env, uint32 index)
+    {
+        CombatTally const& combat = tally(env, index);
+        return float(combat.Engaged ? combat.EngageMs : env.EpisodeElapsedMs) / 1000.0f;
+    });
+    _info.Add("target_health_left", [](Env const& env, uint32)
+    {
+        Unit* target = env.FindTargetUnit(0);
+        return target && target->IsAlive() ? target->GetHealthPct() / 100.0f : 0.0f;
+    });
+    _info.Add("distance_at_end", [](Env const& env, uint32 index)
+    {
+        Player* bot = env.FindBot(index);
+        Unit* target = env.FindTargetUnit(0);
+        return bot && target && bot->IsInMap(target) ? bot->GetDistance(target) : 0.0f;
+    });
+    // ShapeshiftForm: 0 none, 1 cat, 2 tree, 5 bear, 8 dire bear, 17-19 warrior stances, 28 shadowform, 30 stealth,
+    // 31 moonkin.
+    _info.Add("form_at_end", [](Env const& env, uint32 index)
+    {
+        Player* bot = env.FindBot(index);
+        return bot ? float(bot->GetShapeshiftForm()) : 0.0f;
+    });
+    _info.Add("power_left", [](Env const& env, uint32 index)
+    {
+        Player* bot = env.FindBot(index);
+        if (!bot)
+            return 0.0f;
+        Powers const power = bot->getPowerType();
+        uint32 const maxPower = bot->GetMaxPower(power);
+        return maxPower ? float(bot->GetPower(power)) / float(maxPower) : 0.0f;
+    });
+    _info.Add("target_evade_seconds", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).TargetEvadeMs) / 1000.0f;
+    });
+    _info.Add("out_of_sight_seconds", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).OutOfSightMs) / 1000.0f;
+    });
+    _info.Add("actions_per_minute", [seat](Env const& env, uint32 index)
+    {
+        float const minutes = std::max(0.001f, float(env.EpisodeElapsedMs) / 60000.0f);
+        return float(seat(env, index).ActionsPressed) / minutes;
     });
 }
 
@@ -1243,9 +1298,16 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
         encounter->BeforeSeatAction(env, seatIndex, target);
 
     TrackTarget(env, seat, bot, target);
+
+    // A paced action is masked, so only a policy that ignores the mask gets here with one: it does nothing.
+    if (action > 0 && Paced(env, seat, uint32(action)))
+        action = 0;
+
     SeatView view = ViewSeat(env, seatIndex, bot, target);
     SeatActionResult result;
     SeatEncoder::Apply(view, action, result);
+    if (action > 0)
+        Press(env, seat, uint32(action));
 
     seat.TargetSlot = view.TargetSlot;
     seat.SpellCasts += result.SpellCasts;
@@ -1327,7 +1389,78 @@ void Animus::Curriculum::StageScenario::ObserveSeat(Env& env, uint32 seatIndex, 
     seat.InCombat = inCombat;
 
     TrackTarget(env, seat, bot, target);
+    TrackCast(env, seat, bot);
     SeatEncoder::Observe(ViewSeat(env, seatIndex, bot, target), obs, mask);
+
+    if (mask)
+        for (uint32 action = 1; action < seat.L->NumActions; ++action)
+            if (mask[action] && Paced(env, seat, action))
+                mask[action] = 0;
+}
+
+void Animus::Curriculum::StageScenario::TrackCast(Env const& env, SeatState& seat, Player* bot)
+{
+    uint32 spellId = 0;
+    if (bot && bot->IsAlive())
+    {
+        if (Spell const* cast = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
+            cast && cast->getState() == SPELL_STATE_PREPARING)
+            spellId = cast->m_spellInfo->Id;
+        else if (Spell const* channel = bot->GetCurrentSpell(CURRENT_CHANNELED_SPELL);
+            channel && channel->getState() == SPELL_STATE_CASTING)
+            spellId = channel->m_spellInfo->Id;
+    }
+
+    if (spellId != seat.CastSpellId)
+    {
+        seat.CastSpellId = spellId;
+        seat.CastStartMs = env.EpisodeElapsedMs;
+    }
+}
+
+bool Animus::Curriculum::StageScenario::Paced(Env const& env, SeatState const& seat, uint32 action) const
+{
+    uint32 const now = env.EpisodeElapsedMs;
+    if (action < seat.ActionReadyMs.size() && now < seat.ActionReadyMs[action])
+        return true;
+
+    // A player stops a cast for something it saw happen, which takes longer than a decision.
+    Layout const& layout = *seat.L;
+    return seat.CastSpellId && layout.Has(BlockId::Duel)
+        && action == layout.Slice(BlockId::Duel).ActionFirst + DuelBlock::ACTION_STOP_CASTING
+        && now < seat.CastStartMs + _tuning.Actions.StopCastMinMs;
+}
+
+void Animus::Curriculum::StageScenario::Press(Env const& env, SeatState& seat, uint32 action) const
+{
+    Layout const& layout = *seat.L;
+    std::optional<BlockId> const block = layout.BlockOfAction(action);
+    if (!block)
+        return;
+
+    ++seat.ActionsPressed;
+    if (seat.ActionReadyMs.size() != layout.NumActions)
+        seat.ActionReadyMs.assign(layout.NumActions, 0);
+
+    uint32 const now = env.EpisodeElapsedMs;
+    uint32 const local = action - layout.Slice(*block).ActionFirst;
+    CurriculumTuning::ActionTuning const& pacing = _tuning.Actions;
+    seat.ActionReadyMs[action] = now + (GetBlock(*block).IsMovement(local) ? pacing.MoveRepeatMs : pacing.RepeatMs);
+
+    // Stopping a cast to start the same one again is the loop the stop-cast charge prices; a player does not do it.
+    if (*block != BlockId::Duel || local != DuelBlock::ACTION_STOP_CASTING || !seat.CastSpellId)
+        return;
+
+    uint32 const coreFirst = layout.Slice(BlockId::Core).ActionFirst;
+    for (uint32 i = 0; i < seat.KnownRanks.size(); ++i)
+    {
+        SpellInfo const* info = seat.KnownRanks[i];
+        if (!info || info->Id != seat.CastSpellId || coreFirst + i >= seat.ActionReadyMs.size())
+            continue;
+
+        uint32& ready = seat.ActionReadyMs[coreFirst + i];
+        ready = std::max(ready, now + pacing.RecastAfterStopMs);
+    }
 }
 
 void Animus::Curriculum::StageScenario::Reward(Env& env, float* reward)

@@ -73,6 +73,7 @@ namespace Animus::Curriculum
         void DescribeManifest(Layout const& layout, boost::json::object& block) const override;
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
+        [[nodiscard]] bool IsMovement(uint32 local) const override { return local == ACTION_FOLLOW_TANK; }
     };
 }
 

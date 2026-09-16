@@ -120,6 +120,10 @@ namespace Animus::Curriculum
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void BeforeApply(SeatView& view) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
+        [[nodiscard]] bool IsMovement(uint32 local) const override
+        {
+            return local <= ACTION_STOP || local == ACTION_BREAK_LINE_OF_SIGHT;
+        }
 
         /// A dead bot's features and mask (every other block stays empty): dead, and whether it can resurrect itself.
         static void ObserveDead(SeatView const& view, float* obs, uint8* mask);

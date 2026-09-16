@@ -113,6 +113,10 @@ namespace Animus::Curriculum
 
         /// Apply the block's action `local` (0-based within the block) as the client would. Masked actions do nothing.
         virtual void Apply(SeatView& /*view*/, uint32 /*local*/, SeatActionResult& /*result*/) const { }
+
+        /// Whether action `local` is a movement order, which is paced by CurriculumTuning::ActionTuning::MoveRepeatMs
+        /// rather than RepeatMs: steering has to be re-issued more often than a spell or an order.
+        [[nodiscard]] virtual bool IsMovement(uint32 /*local*/) const { return false; }
     };
 
     /// The block implementation of `id`.

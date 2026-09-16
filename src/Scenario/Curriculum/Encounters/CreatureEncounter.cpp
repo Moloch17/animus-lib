@@ -27,7 +27,7 @@ std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::CreatureEncounte
 {
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
         RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Kill,
-        RewardTerm::HealthKept, RewardTerm::Death };
+        RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::Timeout };
 }
 
 bool Animus::Curriculum::CreatureEncounter::Build(Env& env, Map* map, uint8 /*level*/)
@@ -49,11 +49,36 @@ bool Animus::Curriculum::CreatureEncounter::Build(Env& env, Map* map, uint8 /*le
 
 void Animus::Curriculum::CreatureEncounter::Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger)
 {
-    CombatReward::OneOnOne(_scenario, env, seat, bot, env.FindTargetUnit(0), ledger);
+    Unit* opponent = env.FindTargetUnit(0);
+    CombatReward::OneOnOne(_scenario, env, seat, bot, opponent, ledger);
+
+    CombatTally& tally = _scenario.Data(env).Seats[seat].Combat;
+    if (bot && opponent && opponent->IsAlive())
+    {
+        uint32 const decisionMs = _scenario.DecisionMs();
+        if (Creature* creature = opponent->ToCreature(); creature && creature->IsInEvadeMode())
+            tally.TargetEvadeMs += decisionMs;
+        if (tally.Engaged && bot->IsAlive() && !bot->IsWithinLOSInMap(opponent))
+            tally.OutOfSightMs += decisionMs;
+    }
+
+    // Out of time with neither side dead: the fight is lost (IsTerminal ends it as a loss, not a cut-off).
+    if (!tally.Killed && !tally.Died && !tally.TimedOut && TimeIsUp(env))
+    {
+        tally.TimedOut = true;
+        ledger.Add(RewardTerm::Timeout, -_scenario.Tuning().Duel.Timeout);
+    }
+}
+
+bool Animus::Curriculum::CreatureEncounter::TimeIsUp(Env const& env)
+{
+    return env.EpisodeLengthMs && env.EpisodeElapsedMs >= env.EpisodeLengthMs;
 }
 
 bool Animus::Curriculum::CreatureEncounter::IsTerminal(Env const& env) const
 {
-    // A death ends it once no resurrection of its own is left to wait for.
-    return _scenario.Data(env).Seats[0].Combat.Killed || _scenario.DeadForGood(env, 0);
+    // A death ends it once no resurrection of its own is left to wait for. Running out of time ends it too, and as
+    // an outcome: the duel is there to be won, so the learner must not bootstrap past the clock as if the fight went
+    // on.
+    return _scenario.Data(env).Seats[0].Combat.Killed || _scenario.DeadForGood(env, 0) || TimeIsUp(env);
 }

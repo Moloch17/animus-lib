@@ -66,6 +66,9 @@ namespace Animus::Curriculum
         uint32 CastsMoved = 0;
         uint32 CastsTargetLost = 0;
         uint32 CastsOther = 0;
+        bool TimedOut = false;                  // creature duel: the clock ran out with neither side dead
+        uint32 TargetEvadeMs = 0;               // creature duel: time the opponent spent evading (leashed, unreachable)
+        uint32 OutOfSightMs = 0;                // creature duel: time engaged without line of sight to the opponent
     };
 
     /// One learned agent: its character, as built for the episode, and its episode totals.
@@ -116,6 +119,13 @@ namespace Animus::Curriculum
         uint32 Revives = 0;                     // dead allies (owner, teammates) the seat resurrected
         bool StepRevivedAlly = false;           // an ally the seat resurrected stood up this decision
 
+        // Pacing (CurriculumTuning::ActionTuning): per layout action, the episode time it may be pressed again (empty
+        // until the first press), and the cast or channel the bot is in, when it began.
+        std::vector<uint32> ActionReadyMs;
+        uint32 CastSpellId = 0;
+        uint32 CastStartMs = 0;
+        uint32 ActionsPressed = 0;              // actions other than the no-op the seat took
+
         CombatTally Combat;
         RewardLedger Rewards;
 
@@ -141,6 +151,10 @@ namespace Animus::Curriculum
             LastPetHealth = 0.0f;
             Revives = 0;
             StepRevivedAlly = false;
+            ActionReadyMs.clear();
+            CastSpellId = 0;
+            CastStartMs = 0;
+            ActionsPressed = 0;
             Combat = CombatTally();
             Rewards.ResetEpisode();
         }

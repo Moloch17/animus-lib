@@ -78,6 +78,10 @@ namespace Animus::Curriculum
         bool Build(Env& env, Map* map, uint8 level) override;
         void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
         [[nodiscard]] bool IsTerminal(Env const& env) const override;
+
+    private:
+        /// The episode's time limit is reached.
+        [[nodiscard]] static bool TimeIsUp(Env const& env);
     };
 
     /// Packs of creatures (casters included, often linked): one pack, or the gauntlet's pull after pull with breaks

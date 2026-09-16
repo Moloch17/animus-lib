@@ -61,6 +61,7 @@ namespace Animus::Curriculum
         FlagReturn,
         CarrierKill,
         FlagLost,
+        Timeout,
         Count
     };
 

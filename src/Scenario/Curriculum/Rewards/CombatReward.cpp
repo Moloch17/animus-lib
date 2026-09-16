@@ -59,6 +59,7 @@ std::string_view Animus::Curriculum::RewardTermName(RewardTerm term)
         case RewardTerm::FlagReturn:            return "flag_return";
         case RewardTerm::CarrierKill:           return "carrier_kill";
         case RewardTerm::FlagLost:              return "flag_lost";
+        case RewardTerm::Timeout:               return "timeout";
         case RewardTerm::Count:                 break;
     }
 

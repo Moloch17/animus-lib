@@ -147,6 +147,8 @@ namespace Animus::Curriculum
         /// Decision interval / 50 ms: per-decision reward terms are tuned per 50 ms and scaled by this, so they mean
         /// the same per second at any StageSettings::DecisionMs.
         [[nodiscard]] float DecisionScale() const { return _decisionScale; }
+        /// The decision interval, in ms of game time.
+        [[nodiscard]] uint32 DecisionMs() const { return _decisionMs; }
 
         /// Every class/role layout of the run, by Layout::Index (the index AgentLayouts reports).
         [[nodiscard]] std::vector<Layout> const& Layouts() const { return _layouts; }
@@ -221,6 +223,13 @@ namespace Animus::Curriculum
         /// (SeatView::HiddenTarget).
         [[nodiscard]] SeatView ViewSeat(Env const& env, uint32 seat, Player* bot, Unit* target) const;
         void ApplySeatAction(Env& env, uint32 seat, int32 action);
+        /// Note the cast or channel the seat's bot is in, and when it began (the stop-cast pace reads it).
+        static void TrackCast(Env const& env, SeatState& seat, Player* bot);
+        /// Whether layout action `action` may not be pressed now (Tuning().Actions): pressed too recently, a spell
+        /// stopped too recently, or a stop of a cast that has only just begun.
+        [[nodiscard]] bool Paced(Env const& env, SeatState const& seat, uint32 action) const;
+        /// The seat pressed `action`: when it, and a spell it stopped, may be pressed again.
+        void Press(Env const& env, SeatState& seat, uint32 action) const;
         void ObserveSeat(Env& env, uint32 seat, float* obs, uint8* mask);
         [[nodiscard]] float SeatReward(Env& env, uint32 seat);
         void WriteState(Env const& env, float* state) const;
@@ -233,6 +242,7 @@ namespace Animus::Curriculum
         uint32 _seatCount = 1;
         uint32 _level = 0;                  // StageSettings::Level: every character's level, 0 = random
         float _decisionScale = 1.0f;
+        uint32 _decisionMs = 0;
 
         std::vector<Layout> _layouts;
 

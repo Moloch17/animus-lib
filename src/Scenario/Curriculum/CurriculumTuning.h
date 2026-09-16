@@ -91,6 +91,12 @@ namespace Animus::Curriculum
             /// finishing it untouched -- deaths were 0.002 an episode, so there is room to push.
             float HealthKept = 0.5f;
             float Death = 3.0f;
+            /// A creature duel that runs out the clock without a kill (and without a death, which Death already
+            /// charges). The duel is won by killing, so a timeout is a lost fight and ends the episode as one, not
+            /// a cut-off the critic bootstraps across: without it the cheapest fight to lose was the one never
+            /// started (stage1_duel at 30M: none of the 11 failed warlock episodes took any damage). As Death, so
+            /// neither way of losing is the cheaper one to learn.
+            float Timeout = 3.0f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
             float RangedRange = 25.0f;          // ... ranged specs
         } Duel;
@@ -114,6 +120,19 @@ namespace Animus::Curriculum
             /// short stays the policy's call.
             float Cancel = 0.05f;
         } Casting;
+
+        /// How often a seat may press the same button, as a player would. Each decision is 100 ms apart, and a
+        /// policy free to act on every one of them re-issues orders nobody would: stage1_duel's warlocks sent their
+        /// pet in 125 times an episode and started and stopped a cast 26 times while standing out of the fight. A
+        /// paced action is masked until it may be pressed again, so the policy never sees the loop as an option.
+        /// Spells keep their own global cooldown and cooldowns as well. 0 turns a pace off.
+        struct ActionTuning
+        {
+            uint32 RepeatMs = 1000;             // the same action again: spells, orders, consumables, targeting
+            uint32 MoveRepeatMs = 300;          // the same movement order again (steering stays responsive)
+            uint32 StopCastMinMs = 500;         // a cast the bot is in cannot be stopped before it ran this long
+            uint32 RecastAfterStopMs = 2000;    // a spell the bot stopped itself cannot be started again for this long
+        } Actions;
 
         /// Packs and the gauntlet's pull after pull.
         struct PullTuning
@@ -294,12 +313,18 @@ namespace Animus::Curriculum
             f("Duel.FastKill", tuning.Duel.FastKill);
             f("Duel.HealthKept", tuning.Duel.HealthKept);
             f("Duel.Death", tuning.Duel.Death);
+            f("Duel.Timeout", tuning.Duel.Timeout);
             f("Duel.MeleeRange", tuning.Duel.MeleeRange);
             f("Duel.RangedRange", tuning.Duel.RangedRange);
 
             f("Casting.TimeWasted", tuning.Casting.TimeWasted);
             f("Casting.TimeCompleted", tuning.Casting.TimeCompleted);
             f("Casting.Cancel", tuning.Casting.Cancel);
+
+            f("Actions.RepeatMs", tuning.Actions.RepeatMs);
+            f("Actions.MoveRepeatMs", tuning.Actions.MoveRepeatMs);
+            f("Actions.StopCastMinMs", tuning.Actions.StopCastMinMs);
+            f("Actions.RecastAfterStopMs", tuning.Actions.RecastAfterStopMs);
 
             f("Pulls.LinkedChance", tuning.Pulls.LinkedChance);
             f("Pulls.EliteChance", tuning.Pulls.EliteChance);

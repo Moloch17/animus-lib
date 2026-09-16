@@ -74,6 +74,10 @@ namespace Animus::Curriculum
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void BeforeApply(SeatView& view) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
+        [[nodiscard]] bool IsMovement(uint32 local) const override
+        {
+            return local == ACTION_MOVE_TO_OBJECTIVE || local == ACTION_ASCEND || local == ACTION_DESCEND;
+        }
 
         /// The fastest ground and flying mount spells `bot` knows (null when none).
         [[nodiscard]] static SpellInfo const* GroundMount(Player const* bot);
