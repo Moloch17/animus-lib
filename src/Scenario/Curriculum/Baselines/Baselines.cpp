@@ -24,9 +24,13 @@
 #include "PartyBlock.h"
 #include "PetBlock.h"
 #include "SharedDefines.h"
+#include "SpellInfo.h"
+#include "SpellMgr.h"
 #include "TravelBlock.h"
+#include <algorithm>
 #include <array>
 #include <optional>
+#include <string_view>
 
 namespace
 {
@@ -114,15 +118,189 @@ namespace
         return std::nullopt;
     }
 
-    /// Whether the seat's spec fights from range (hunters, casters, healers), read from the core block's spec one-hot.
-    bool FightsFromRange(Row const& row, Layout const& layout)
+    /// The seat's spec, read from the core block's spec one-hot; null if none is set.
+    SpecProfile const* SpecOf(Row const& row, Layout const& layout)
     {
         std::vector<SpecProfile> const& specs = layout.Profile->Specs;
         for (uint32 spec = 0; spec < specs.size() && spec < CoreBlock::MAX_SPECS; ++spec)
             if (row.Obs(BlockId::Core, CoreBlock::OBS_SPEC_FIRST + spec) > 0.0f)
-                return specs[spec].Range != RangeBand::Melee;
+                return &specs[spec];
 
-        return false;
+        return nullptr;
+    }
+
+    /// Whether the seat's spec fights from range (hunters, casters, healers).
+    bool FightsFromRange(Row const& row, Layout const& layout)
+    {
+        SpecProfile const* spec = SpecOf(row, layout);
+        return spec && spec->Range != RangeBand::Melee;
+    }
+
+    /// What a catalog spell is to the `fight` rotation.
+    enum class SpellUse : uint8
+    {
+        Other,
+        Damage,             // hits the target now: school or weapon damage, a leech, a melee or ranged weapon attack
+        DamageOverTime,     // only ticks: worth casting while it isn't on the target
+        Buff,               // an aura on the bot or its party with no cooldown of its own
+        Form,               // a shapeshift (stances, forms, Shadowform): only the spec's own, see SpecForms
+    };
+
+    SpellUse UseOf(SpellInfo const* info)
+    {
+        if (!info)
+            return SpellUse::Other;
+
+        if (info->HasAura(SPELL_AURA_MOD_SHAPESHIFT))
+            return SpellUse::Form;
+
+        if (!info->IsPositive())
+        {
+            // Crowd control that damage breaks (Polymorph, Scatter Shot, Fear) would undo the fight's own hits.
+            if (info->HasAura(SPELL_AURA_MOD_CONFUSE) || info->HasAura(SPELL_AURA_MOD_FEAR)
+                || info->HasAura(SPELL_AURA_TRANSFORM))
+                return SpellUse::Other;
+
+            bool direct = info->DmgClass == SPELL_DAMAGE_CLASS_MELEE || info->DmgClass == SPELL_DAMAGE_CLASS_RANGED;
+            bool periodic = false;
+            for (SpellEffectInfo const& effect : info->GetEffects())
+            {
+                switch (effect.Effect)
+                {
+                    case SPELL_EFFECT_SCHOOL_DAMAGE:
+                    case SPELL_EFFECT_WEAPON_DAMAGE:
+                    case SPELL_EFFECT_WEAPON_DAMAGE_NOSCHOOL:
+                    case SPELL_EFFECT_NORMALIZED_WEAPON_DMG:
+                    case SPELL_EFFECT_WEAPON_PERCENT_DAMAGE:
+                    case SPELL_EFFECT_HEALTH_LEECH:
+                        direct = true;
+                        break;
+                    default:
+                        break;
+                }
+
+                switch (effect.ApplyAuraName)
+                {
+                    case SPELL_AURA_PERIODIC_DAMAGE:
+                    case SPELL_AURA_PERIODIC_LEECH:
+                    case SPELL_AURA_PERIODIC_DAMAGE_PERCENT:
+                    case SPELL_AURA_PERIODIC_TRIGGER_SPELL:
+                        periodic = true;
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            return direct ? SpellUse::Damage : periodic ? SpellUse::DamageOverTime : SpellUse::Other;
+        }
+
+        // A buff to keep up, cast once: not a cooldown (a defensive saved for need), not speed (an aspect that dazes
+        // when hit), not stealth or invisibility (which a fight breaks), not feigning death.
+        bool const aura = info->HasEffect(SPELL_EFFECT_APPLY_AURA)
+            || info->HasEffect(SPELL_EFFECT_APPLY_AREA_AURA_PARTY)
+            || info->HasEffect(SPELL_EFFECT_APPLY_AREA_AURA_RAID);
+        if (!aura || info->RecoveryTime || info->CategoryRecoveryTime || info->HasAura(SPELL_AURA_MOD_INCREASE_SPEED)
+            || info->HasAura(SPELL_AURA_MOD_STEALTH) || info->HasAura(SPELL_AURA_MOD_INVISIBILITY)
+            || info->HasAura(SPELL_AURA_FEIGN_DEATH))
+            return SpellUse::Other;
+
+        return SpellUse::Buff;
+    }
+
+    /// The form a spec fights in, best first: the rotation shifts into the first one it knows while in no form. A spec
+    /// not listed fights in no form (warriors are put in their stance by SeatCharacter::PrepareFighter).
+    struct SpecForm
+    {
+        uint8 Class;
+        std::string_view Spec;
+        std::array<uint32, 2> Forms;
+    };
+
+    constexpr std::array<SpecForm, 4> SPEC_FORMS =
+    {{
+        { CLASS_DRUID, "balance", { 24858, 0 } },           // Moonkin Form
+        { CLASS_DRUID, "feral_cat", { 768, 0 } },           // Cat Form
+        { CLASS_DRUID, "feral_bear", { 9634, 5487 } },      // Dire Bear Form, Bear Form
+        { CLASS_PRIEST, "shadow", { 15473, 0 } },           // Shadowform
+    }};
+
+    /// The core block's feature `feature` of catalog action `action` (known, cooldown, aura on target, aura on self).
+    float ActionFeature(Row const& row, uint32 action, uint32 feature)
+    {
+        return row.Obs(BlockId::Core, CoreBlock::OBS_GLOBAL_COUNT + action * CoreBlock::ACTION_FEATURES + feature);
+    }
+
+    constexpr uint32 ACTION_AURA_ON_TARGET = 2;
+    constexpr uint32 ACTION_AURA_ON_SELF = 3;
+
+    /// `fight`'s spells, first match wins: the spec's form while in no form; the first allowed damaging spell (one that
+    /// only ticks while it isn't on the target); out of combat, a buff not already on the bot, one per exclusive kind
+    /// (a seal, an aura, an armor); otherwise nothing. Casting for its own sake resets the swing timer, and the first
+    /// spell in catalog order is often a buff that can be cast again forever.
+    std::optional<int32> Rotation(Row const& row, Layout const& layout)
+    {
+        std::vector<ActionCatalog::Action> const& actions = layout.Catalog().Actions();
+        auto const castable = [&actions](uint32 action)
+        {
+            return actions[action].Type == ActionCatalog::Kind::Spell;
+        };
+
+        // In no form (the tracked forms' one-hot starts with FORM_NONE): the spec's own.
+        SpecProfile const* spec = SpecOf(row, layout);
+        if (spec && row.Obs(BlockId::Core, CoreBlock::OBS_FORM_FIRST) > 0.0f)
+        {
+            for (SpecForm const& entry : SPEC_FORMS)
+            {
+                if (entry.Class != layout.Profile->Class || entry.Spec != spec->Name)
+                    continue;
+
+                for (uint32 form : entry.Forms)
+                    for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < actions.size(); ++action)
+                        if (form && castable(action) && actions[action].FirstRank == form)
+                            if (std::optional<int32> shift = row.Allowed(BlockId::Core, action))
+                                return shift;
+            }
+        }
+
+        for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < actions.size(); ++action)
+        {
+            if (!castable(action))
+                continue;
+
+            SpellUse const use = UseOf(sSpellMgr->GetSpellInfo(actions[action].FirstRank));
+            if (use == SpellUse::Damage
+                || (use == SpellUse::DamageOverTime && ActionFeature(row, action, ACTION_AURA_ON_TARGET) == 0.0f))
+                if (std::optional<int32> cast = row.Allowed(BlockId::Core, action))
+                    return cast;
+        }
+
+        if (row.Obs(BlockId::Duel, DuelBlock::OBS_BOT_IN_COMBAT) > 0.0f)
+            return std::nullopt;
+
+        // Exclusive kinds already on the bot: a second seal would only replace the first, and back again.
+        std::vector<SpellSpecificType> active;
+        for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < actions.size(); ++action)
+            if (castable(action) && ActionFeature(row, action, ACTION_AURA_ON_SELF) > 0.0f)
+                if (SpellInfo const* info = sSpellMgr->GetSpellInfo(actions[action].FirstRank))
+                    if (info->GetSpellSpecific() != SPELL_SPECIFIC_NORMAL)
+                        active.push_back(info->GetSpellSpecific());
+
+        for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < actions.size(); ++action)
+        {
+            if (!castable(action) || ActionFeature(row, action, ACTION_AURA_ON_SELF) > 0.0f)
+                continue;
+
+            SpellInfo const* info = sSpellMgr->GetSpellInfo(actions[action].FirstRank);
+            if (UseOf(info) != SpellUse::Buff || (info->GetSpellSpecific() != SPELL_SPECIFIC_NORMAL
+                && std::find(active.begin(), active.end(), info->GetSpellSpecific()) != active.end()))
+                continue;
+
+            if (std::optional<int32> cast = row.Allowed(BlockId::Core, action))
+                return cast;
+        }
+
+        return std::nullopt;
     }
 
     std::optional<int32> Fight(Row const& row, Layout const& layout)
@@ -273,10 +451,15 @@ int32 Animus::Curriculum::Baselines::Choose(std::string const& policy, Layout co
     Row const row(layout, obs, mask);
 
     if (policy == "fight" && layout.Has(BlockId::Duel))
+    {
         if (std::optional<int32> action = Fight(row, layout))
             return *action;
+        if (std::optional<int32> spell = Rotation(row, layout))
+            return *spell;
+        return 0;
+    }
 
-    // The first usable spell or trinket in catalog order.
+    // greedy: the first usable spell or trinket in catalog order.
     uint32 const catalog = uint32(layout.Catalog().Actions().size());
     for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < catalog; ++action)
         if (std::optional<int32> allowed = row.Allowed(BlockId::Core, action))
