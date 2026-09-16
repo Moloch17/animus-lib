@@ -79,7 +79,10 @@ namespace Animus::Curriculum
             float StepCost = 0.0002f;           // per decision
             float Kill = 2.0f;
             float FastKill = 3.0f;              // times the fraction of the episode length left, from the engagement
-            float HealthKept = 2.0f;            // times the fraction of the bot's health not lost
+            /// Times the fraction of the bot's health not lost. Damage taken is already charged as it happens
+            /// (DamageTaken, dense), so this pays for the same thing again at the kill; together they were
+            /// worth three times the damage dealt term, which reads as "survive" more than "win".
+            float HealthKept = 1.0f;
             float Death = 3.0f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
             float RangedRange = 25.0f;          // ... ranged specs
@@ -89,7 +92,12 @@ namespace Animus::Curriculum
         struct CastingTuning
         {
             float TimeWasted = 0.03f;           // per second spent on a cast that did not finish
-            float TimeCompleted = 0.03f;        // per second of cast time of a cast that finished, in combat
+            /// Per second of cast time of a cast that finished, in combat. 0: paying by the second for finishing
+            /// pays for a long useless cast as readily as the right one, and makes cancelling cost both the
+            /// seconds already spent and the seconds forgone -- a bias against reacting. What a cast is worth
+            /// is what it does, which damage, healing and the kill already pay for. TimeWasted still charges
+            /// for the failure this was meant to balance.
+            float TimeCompleted = 0.0f;
         } Casting;
 
         /// Packs and the gauntlet's pull after pull.
@@ -122,7 +130,7 @@ namespace Animus::Curriculum
             float Clear = 2.0f;
             float FastClear = 3.0f;             // pack: times the episode fraction left after engaging
             float FastPull = 2.0f;              // gauntlet: times 1 - time since the pull engaged / 60 s
-            float HealthKept = 2.0f;            // times the fraction of the bot's health not lost this pull
+            float HealthKept = 1.0f;            // as the duel's: damage taken is already charged as it happens
             float PackDeath = 3.0f;
             float GauntletDeath = 5.0f;
             float OwnerClearScale = 2.0f;       // owner stages: kills and clears count this many times

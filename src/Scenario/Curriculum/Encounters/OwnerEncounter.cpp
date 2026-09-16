@@ -248,9 +248,9 @@ void Animus::Curriculum::OwnerEncounter::Reward(Env& env, uint32 seatIndex, Play
         // Standing again (resurrected, or recovered after a pull): its next death is paid for again.
         seatOwner.DeathSeen = false;
 
-        // Fighting on its own: the companion pulled something, or kept fighting after the owner stopped (a party's
-        // tank pulls first by design).
-        if (bot->IsInCombat() && !owner->IsInCombat() && !(_scenario.Arena(env).PartyGroup && role == Role::Tank))
+        // Fighting on its own: the companion pulled something, or kept fighting after the owner stopped. A tank
+        // pulls first by design, in a party and beside a single owner alike, so it is never charged for it.
+        if (bot->IsInCombat() && !owner->IsInCombat() && role != Role::Tank)
             ledger.Add(RewardTerm::SoloFight, -tuning.SoloFight * scale);
 
         // Out of combat, stay with the owner.
