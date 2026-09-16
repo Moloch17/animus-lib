@@ -24,6 +24,7 @@
 #include "ObjectGuid.h"
 #include "Position.h"
 #include "RewardLedger.h"
+#include "SeatView.h"
 #include "SeatCharacter.h"
 #include "Supplies.h"
 #include "TalentBuilder.h"
@@ -77,6 +78,14 @@ namespace Animus::Curriculum
         uint32 FightMs = 0;
         uint32 InMeleeMs = 0;
         uint32 OnPetMs = 0;
+        // ... and how much the opponent spent rooted or snared by the bot, its pet or its totems, and how often the
+        // bot put a root or snare on it (a new one where there was none).
+        uint32 RootedMs = 0;
+        uint32 SnaredMs = 0;
+        uint32 RootsApplied = 0;
+        uint32 SnaresApplied = 0;
+        bool WasRooted = false;
+        bool WasSnared = false;
     };
 
     /// One learned agent: its character, as built for the episode, and its episode totals.
@@ -122,6 +131,13 @@ namespace Animus::Curriculum
         uint32 SelfResurrections = 0;
         uint32 PetAbilities = 0;
         uint32 PetOrders = 0;
+        // Which pet orders the seat gave (by PetOrder), and what its pet was doing while out: attacking something,
+        // set passive, told to stay.
+        std::array<uint32, std::size_t(PetOrder::Count)> PetOrderCounts{};
+        uint32 PetOutMs = 0;
+        uint32 PetAttackingMs = 0;
+        uint32 PetPassiveMs = 0;
+        uint32 PetStayingMs = 0;
         bool PetDied = false;                   // a pet the seat had died this episode
         float LastPetHealth = 0.0f;             // the pet's health at the last decision (0 = no pet)
         uint32 Revives = 0;                     // dead allies (owner, teammates) the seat resurrected
@@ -139,8 +155,6 @@ namespace Animus::Curriculum
         std::vector<std::vector<uint32>> PressTimes;
         uint32 StepRepeats = 0;
         uint32 RepeatedPresses = 0;
-
-        ObjectGuid AutocastPet;                 // the pet whose damage abilities were set to autocast
 
         CombatTally Combat;
         RewardLedger Rewards;
@@ -163,6 +177,11 @@ namespace Animus::Curriculum
             SelfResurrections = 0;
             PetAbilities = 0;
             PetOrders = 0;
+            PetOrderCounts.fill(0);
+            PetOutMs = 0;
+            PetAttackingMs = 0;
+            PetPassiveMs = 0;
+            PetStayingMs = 0;
             PetDied = false;
             LastPetHealth = 0.0f;
             Revives = 0;
@@ -174,7 +193,6 @@ namespace Animus::Curriculum
             PressTimes.clear();
             StepRepeats = 0;
             RepeatedPresses = 0;
-            AutocastPet.Clear();
             Combat = CombatTally();
             Rewards.ResetEpisode();
         }

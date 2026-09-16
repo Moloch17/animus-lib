@@ -267,33 +267,6 @@ Animus::Curriculum::PetBlock::PetKind Animus::Curriculum::PetBlock::KindOf(Creat
     return KIND_OTHER;
 }
 
-bool Animus::Curriculum::PetBlock::AutocastDamage(Creature* pet)
-{
-    // Guardians with a charm bar (a ghoul without Master of Ghouls, a Water Elemental without its glyph) already
-    // autocast their targeted spells (CharmInfo::InitCharmCreateSpells); a controlled pet keeps what it learned.
-    Pet* realPet = pet ? pet->ToPet() : nullptr;
-    if (!realPet)
-        return true;
-    if (realPet->m_spells.empty())
-        return false;
-
-    for (auto const& [spellId, spell] : realPet->m_spells)
-    {
-        if (spell.state == PETSPELL_REMOVED || spell.active != ACT_DISABLED)
-            continue;
-
-        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
-        if (!info || !info->IsAutocastable() || Classify(info).Best != KIND_DAMAGE)
-            continue;
-
-        realPet->ToggleAutocast(info, true);
-        if (CharmInfo* charmInfo = realPet->GetCharmInfo())
-            charmInfo->SetSpellAutocast(info, true);
-    }
-
-    return true;
-}
-
 bool Animus::Curriculum::PetBlock::HasPet(uint8 playerClass)
 {
     return playerClass == CLASS_HUNTER || playerClass == CLASS_WARLOCK || playerClass == CLASS_DEATH_KNIGHT
@@ -397,12 +370,15 @@ void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActio
                 realPet->ClearCastWhenWillAvailable();
             pet->ClearInPetCombat();
             pet->SetReactState(REACT_PASSIVE);
+            result.PetOrderGiven = PetOrder::Passive;
             return;
         case ACTION_DEFENSIVE:
             pet->SetReactState(REACT_DEFENSIVE);
+            result.PetOrderGiven = PetOrder::Defensive;
             return;
         case ACTION_AGGRESSIVE:
             pet->SetReactState(REACT_AGGRESSIVE);
+            result.PetOrderGiven = PetOrder::Aggressive;
             return;
         case ACTION_FOLLOW:
             // HandlePetActionHelper, COMMAND_FOLLOW.
@@ -421,6 +397,7 @@ void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActio
             charmInfo->RemoveStayPosition();
             charmInfo->SetForcedSpell(0);
             charmInfo->SetForcedTargetGUID();
+            result.PetOrderGiven = PetOrder::Follow;
             return;
         case ACTION_STAY:
             // HandlePetActionHelper, COMMAND_STAY.
@@ -438,6 +415,7 @@ void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActio
                 realPet->ClearCastWhenWillAvailable();
             charmInfo->SetForcedSpell(0);
             charmInfo->SetForcedTargetGUID();
+            result.PetOrderGiven = PetOrder::Stay;
             return;
         default:
             break;

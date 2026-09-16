@@ -128,6 +128,19 @@ namespace Animus::Curriculum
     };
 
     /// What an applied action did, for the scenario's bookkeeping and rewards.
+    /// A pet order a seat gave (SeatActionResult::PetOrderGiven), for the per-order episode counts.
+    enum class PetOrder : uint8
+    {
+        None,
+        Attack,                                     // sent pets and guardians at the target
+        Passive,
+        Defensive,
+        Aggressive,
+        Follow,
+        Stay,
+        Count
+    };
+
     struct SeatActionResult
     {
         uint32 SpellCasts = 0;
@@ -144,6 +157,7 @@ namespace Animus::Curriculum
         uint32 Revives = 0;                         // resurrection spells started on a dead ally
         uint32 PetAbilities = 0;                    // pet bar abilities the pet started
         uint32 PetOrders = 0;                       // pet stances, follow and stay, and sending the pet in
+        PetOrder PetOrderGiven = PetOrder::None;    // which of them, when one was given
     };
 }
 

@@ -442,7 +442,10 @@ void Animus::Curriculum::DuelBlock::Apply(SeatView& view, uint32 local, SeatActi
             return;
         case ACTION_PET_ATTACK:
             if (Encoding::PetAttack(bot, target))
+            {
                 ++result.PetOrders;
+                result.PetOrderGiven = PetOrder::Attack;
+            }
             return;
         case ACTION_STOP_CASTING:
             // As CMSG_CANCEL_CAST / CMSG_CANCEL_CHANNELLING: the current cast or channel, cancelled by the caster.

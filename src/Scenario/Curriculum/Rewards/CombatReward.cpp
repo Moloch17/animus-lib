@@ -19,9 +19,31 @@
 #include "CombatReward.h"
 #include "EncoderSupport.h"
 #include "Env.h"
+#include "ObjectAccessor.h"
 #include "Player.h"
+#include "SpellAuraEffects.h"
 #include "StageScenario.h"
 #include <algorithm>
+
+namespace
+{
+    /// Whether `target` carries an aura of `type` from `bot` or from something `bot` owns (its pet, a totem).
+    bool HasAuraFrom(Unit const* target, AuraType type, Player const* bot)
+    {
+        for (AuraEffect const* effect : target->GetAuraEffectsByType(type))
+        {
+            ObjectGuid const caster = effect->GetCasterGUID();
+            if (caster == bot->GetGUID())
+                return true;
+
+            if (Unit const* unit = ObjectAccessor::GetUnit(*bot, caster); unit
+                && unit->GetCharmerOrOwnerGUID() == bot->GetGUID())
+                return true;
+        }
+
+        return false;
+    }
+}
 
 std::string_view Animus::Curriculum::RewardTermName(RewardTerm term)
 {
@@ -183,6 +205,21 @@ void Animus::Curriculum::CombatReward::OneOnOne(StageScenario& scenario, Env con
         if (Unit const* victim = opponent->GetVictim(); victim && victim != bot
             && victim->GetCharmerOrOwnerGUID() == bot->GetGUID())
             tally.OnPetMs += decisionMs;
+
+        // Whether the bot keeps its opponent in place or slowed: roots (Frost Nova, Entangling Roots) and snares
+        // (Concussive Shot, Wing Clip, Frost Shock, Earthbind), its own or its pet's and totems'.
+        bool const rooted = HasAuraFrom(opponent, SPELL_AURA_MOD_ROOT, bot);
+        bool const snared = HasAuraFrom(opponent, SPELL_AURA_MOD_DECREASE_SPEED, bot);
+        if (rooted)
+            tally.RootedMs += decisionMs;
+        if (snared)
+            tally.SnaredMs += decisionMs;
+        if (rooted && !tally.WasRooted)
+            ++tally.RootsApplied;
+        if (snared && !tally.WasSnared)
+            ++tally.SnaresApplied;
+        tally.WasRooted = rooted;
+        tally.WasSnared = snared;
     }
 
     if (!tally.Killed && !opponent->IsAlive())

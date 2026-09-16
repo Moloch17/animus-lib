@@ -18,6 +18,7 @@
 
 #include "StageScenario.h"
 #include "Baselines.h"
+#include "CharmInfo.h"
 #include "BotAccounts.h"
 #include "Config.h"
 #include "Containers.h"
@@ -523,6 +524,37 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
         return float(seat(env, index).PetAbilities);
     });
     _info.Add("pet_orders", [seat](Env const& env, uint32 index) { return float(seat(env, index).PetOrders); });
+    // Each kind of pet order, and what the pet did while out: seconds out, and the share of that time it was
+    // attacking something, set passive, or told to stay.
+    for (auto const& [name, order] : std::initializer_list<std::pair<char const*, PetOrder>>{
+        { "pet_attack_orders", PetOrder::Attack }, { "pet_passive_orders", PetOrder::Passive },
+        { "pet_defensive_orders", PetOrder::Defensive }, { "pet_aggressive_orders", PetOrder::Aggressive },
+        { "pet_follow_orders", PetOrder::Follow }, { "pet_stay_orders", PetOrder::Stay } })
+        _info.Add(name, [seat, order](Env const& env, uint32 index)
+        {
+            return float(seat(env, index).PetOrderCounts[std::size_t(order)]);
+        });
+    _info.Add("pet_out_seconds", [seat](Env const& env, uint32 index)
+    {
+        return float(seat(env, index).PetOutMs) / 1000.0f;
+    });
+    auto const petShare = [seat](Env const& env, uint32 index, uint32 SeatState::*ms)
+    {
+        SeatState const& s = seat(env, index);
+        return s.PetOutMs ? float(s.*ms) / float(s.PetOutMs) : 0.0f;
+    };
+    _info.Add("pet_attacking_share", [petShare](Env const& env, uint32 index)
+    {
+        return petShare(env, index, &SeatState::PetAttackingMs);
+    });
+    _info.Add("pet_passive_share", [petShare](Env const& env, uint32 index)
+    {
+        return petShare(env, index, &SeatState::PetPassiveMs);
+    });
+    _info.Add("pet_staying_share", [petShare](Env const& env, uint32 index)
+    {
+        return petShare(env, index, &SeatState::PetStayingMs);
+    });
     _info.Add("pet_at_start", [seat](Env const& env, uint32 index)
     {
         return seat(env, index).PetAtStart ? 1.0f : 0.0f;
@@ -628,6 +660,23 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     {
         CombatTally const& combat = tally(env, index);
         return combat.FightMs ? float(combat.OnPetMs) / float(combat.FightMs) : 0.0f;
+    });
+    // Roots and snares from the bot, its pet or its totems: the share of the fight the opponent spent under them, and
+    // how often one went on where there was none.
+    _info.Add("target_rooted_share", [tally](Env const& env, uint32 index)
+    {
+        CombatTally const& combat = tally(env, index);
+        return combat.FightMs ? float(combat.RootedMs) / float(combat.FightMs) : 0.0f;
+    });
+    _info.Add("target_snared_share", [tally](Env const& env, uint32 index)
+    {
+        CombatTally const& combat = tally(env, index);
+        return combat.FightMs ? float(combat.SnaredMs) / float(combat.FightMs) : 0.0f;
+    });
+    _info.Add("roots_applied", [tally](Env const& env, uint32 index) { return float(tally(env, index).RootsApplied); });
+    _info.Add("snares_applied", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).SnaresApplied);
     });
     _info.Add("actions_per_minute", [seat](Env const& env, uint32 index)
     {
@@ -1372,6 +1421,8 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     seat.SelfResurrections += result.SelfResurrected ? 1 : 0;
     seat.PetAbilities += result.PetAbilities;
     seat.PetOrders += result.PetOrders;
+    if (result.PetOrderGiven != PetOrder::None)
+        ++seat.PetOrderCounts[std::size_t(result.PetOrderGiven)];
 
     CombatTally& tally = seat.Combat;
     if (result.StealthOpener)
@@ -1569,9 +1620,17 @@ float Animus::Curriculum::StageScenario::SeatReward(Env& env, uint32 seatIndex)
         seat.PetDied = true;
     seat.LastPetHealth = pet && pet->IsAlive() ? std::max(0.001f, pet->GetHealthPct() / 100.0f) : 0.0f;
 
-    // A new pet's damage abilities go on autocast, as a player sets them once for good (see PetBlock::AutocastDamage).
-    if (pet && pet->IsAlive() && pet->GetGUID() != seat.AutocastPet && PetBlock::AutocastDamage(pet))
-        seat.AutocastPet = pet->GetGUID();
+    // What the pet does while it is out.
+    if (pet && pet->IsAlive())
+    {
+        seat.PetOutMs += _decisionMs;
+        if (pet->GetVictim())
+            seat.PetAttackingMs += _decisionMs;
+        if (pet->HasReactState(REACT_PASSIVE))
+            seat.PetPassiveMs += _decisionMs;
+        if (CharmInfo const* charmInfo = pet->GetCharmInfo(); charmInfo && charmInfo->HasCommandState(COMMAND_STAY))
+            seat.PetStayingMs += _decisionMs;
+    }
 
     // Standing again (resurrected, or recovered after a pull): the next death is paid for again.
     if (bot && bot->IsAlive())
