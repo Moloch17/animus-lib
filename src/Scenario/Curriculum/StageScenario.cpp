@@ -30,6 +30,7 @@
 #include "Log.h"
 #include "Map.h"
 #include "Opponents.h"
+#include "PetBlock.h"
 #include "Player.h"
 #include "Random.h"
 #include "SeatCharacter.h"
@@ -475,6 +476,22 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     _info.Add("stealth_utility_casts", [tally](Env const& env, uint32 index)
     {
         return float(tally(env, index).StealthUtilityCasts);
+    });
+    // Pets: how much of the damage they dealt, whether one died, and how the seat commanded them.
+    _info.Add("pet_damage_share", [](Env const& env, uint32 index)
+    {
+        AgentStats const& stats = env.EpisodeStats[index];
+        return stats.Damage ? float(stats.PetDamage) / float(stats.Damage) : 0.0f;
+    });
+    _info.Add("pet_died", [seat](Env const& env, uint32 index) { return seat(env, index).PetDied ? 1.0f : 0.0f; });
+    _info.Add("pet_abilities", [seat](Env const& env, uint32 index)
+    {
+        return float(seat(env, index).PetAbilities);
+    });
+    _info.Add("pet_orders", [seat](Env const& env, uint32 index) { return float(seat(env, index).PetOrders); });
+    _info.Add("pet_at_start", [seat](Env const& env, uint32 index)
+    {
+        return seat(env, index).PetAtStart ? 1.0f : 0.0f;
     });
     _info.Add("pet_summoned", [tally](Env const& env, uint32 index)
     {
@@ -938,7 +955,25 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
             return false;
 
     StockSeats(env);
+    GivePets(env);
     return true;
+}
+
+void Animus::Curriculum::StageScenario::GivePets(Env& env)
+{
+    // After the encounters prepared the seats (a hunter's stable offer) and stocked them (soul shards, corpse dust).
+    EnvState& data = Data(env);
+    for (uint32 seatIndex = 0; seatIndex < data.ActiveSeats; ++seatIndex)
+    {
+        SeatState& seat = data.Seats[seatIndex];
+        seat.PetAtStart = false;
+        Player* bot = SeatBot(env, seatIndex);
+        if (!bot || !seat.L || !PetBlock::HasPet(seat.L->Profile->Class)
+            || !roll_chance_i(_tuning.Characters.PetOutChance))
+            continue;
+
+        seat.PetAtStart = SeatCharacter::GivePet(bot, seat.Stable);
+    }
 }
 
 Player* Animus::Curriculum::StageScenario::BuildSeat(Env& env, uint32 seatIndex, Map*& map, uint8 level,
@@ -1217,6 +1252,8 @@ void Animus::Curriculum::StageScenario::ApplySeatAction(Env& env, uint32 seatInd
     seat.TrinketUses += result.TrinketUses;
     seat.ConsumablesUsed += result.ConsumablesUsed;
     seat.SelfResurrections += result.SelfResurrected ? 1 : 0;
+    seat.PetAbilities += result.PetAbilities;
+    seat.PetOrders += result.PetOrders;
 
     CombatTally& tally = seat.Combat;
     if (result.StealthOpener)
@@ -1317,6 +1354,13 @@ float Animus::Curriculum::StageScenario::SeatReward(Env& env, uint32 seatIndex)
     // Before any encounter's reward: several read it (the pulls' and duel's damage taken, the owner's tank refund).
     seat.LastStepDamageTaken = bot
         ? float(env.StepStats[seatIndex].DamageTaken) / float(std::max<uint32>(1, bot->GetMaxHealth())) : 0.0f;
+
+    // A pet that died: a corpse still the seat's (a hunter's beast), or one gone while nearly dead (a demon's body
+    // leaves at once). Replacing a healthy pet with another is not a death.
+    Creature* pet = bot ? PetBlock::FindPet(bot) : nullptr;
+    if ((pet && !pet->IsAlive()) || (!pet && seat.LastPetHealth > 0.0f && seat.LastPetHealth < 0.1f))
+        seat.PetDied = true;
+    seat.LastPetHealth = pet && pet->IsAlive() ? std::max(0.001f, pet->GetHealthPct() / 100.0f) : 0.0f;
 
     // Standing again (resurrected, or recovered after a pull): the next death is paid for again.
     if (bot && bot->IsAlive())

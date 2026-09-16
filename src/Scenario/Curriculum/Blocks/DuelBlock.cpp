@@ -100,6 +100,18 @@ namespace
             return action == DuelBlock::ACTION_STOP && !bot->movespline->Finalized();
         }
 
+        // Calling a stable beast needs no target: a hunter calls its pet before a fight, or between pulls. Over a dead
+        // pet too (CallHunterBeast dismisses the corpse).
+        if (action >= DuelBlock::ACTION_CALL_BEAST_FIRST)
+        {
+            uint32 const slot = action - DuelBlock::ACTION_CALL_BEAST_FIRST;
+            if (slot >= view.StableCount || casting || !CanCallHunterBeast(bot))
+                return false;
+
+            SpellInfo const* callPet = sSpellMgr->GetSpellInfo(SPELL_CALL_PET);
+            return !callPet || !bot->GetGlobalCooldownMgr().HasGlobalCooldown(callPet);
+        }
+
         if (!target || !target->IsAlive())
             return false;
 
@@ -125,12 +137,7 @@ namespace
                 break;
         }
 
-        uint32 const slot = action - DuelBlock::ACTION_CALL_BEAST_FIRST;
-        if (slot >= view.StableCount || casting || bot->GetPetGUID() || bot->GetLevel() < HUNTER_PET_LEVEL)
-            return false;
-
-        SpellInfo const* callPet = sSpellMgr->GetSpellInfo(SPELL_CALL_PET);
-        return !callPet || !bot->GetGlobalCooldownMgr().HasGlobalCooldown(callPet);
+        return false;
     }
 }
 
@@ -411,7 +418,8 @@ void Animus::Curriculum::DuelBlock::Apply(SeatView& view, uint32 local, SeatActi
             bot->Attack(target, true);
             return;
         case ACTION_PET_ATTACK:
-            Encoding::PetAttack(bot, target);
+            if (Encoding::PetAttack(bot, target))
+                ++result.PetOrders;
             return;
         case ACTION_STOP_CASTING:
             // As CMSG_CANCEL_CAST / CMSG_CANCEL_CHANNELLING: the current cast or channel, cancelled by the caster.

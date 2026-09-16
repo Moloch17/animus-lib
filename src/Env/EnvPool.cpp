@@ -308,6 +308,8 @@ void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uin
 
     AgentStats& stats = env.StepStats[itr->second.Agent];
     stats.Damage += damage;
+    if (attacker->GetGUID() != itr->first)
+        stats.PetDamage += damage;
 
     if (type == DIRECT_DAMAGE)
     {

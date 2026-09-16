@@ -207,6 +207,8 @@ namespace Animus::Curriculum
         void Configure(Player* bot, SeatState& seat, bool pvp) const;
         /// Every seat's potions, bandages, stones and flask for the episode (after the encounters are built).
         void StockSeats(Env& env);
+        /// Pet classes start with their pet out Characters.PetOutChance percent of the time (after StockSeats).
+        void GivePets(Env& env);
         /// Dead players with a resurrection request accept it, as a client does; the reviving seat is credited.
         void AcceptResurrections(Env& env);
 

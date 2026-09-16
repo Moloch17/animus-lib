@@ -44,6 +44,7 @@ namespace Animus
         uint64 Damage = 0;
         uint64 WhiteDamage = 0;
         uint64 SpecialDamage = 0;
+        uint64 PetDamage = 0;           // of Damage, what the agent's pets and guardians dealt
         uint32 WhiteHits = 0;
         uint32 SpecialHits = 0;
         uint64 DamageTaken = 0;         // by the agent, from anything
@@ -67,6 +68,7 @@ namespace Animus
             Damage += other.Damage;
             WhiteDamage += other.WhiteDamage;
             SpecialDamage += other.SpecialDamage;
+            PetDamage += other.PetDamage;
             WhiteHits += other.WhiteHits;
             SpecialHits += other.SpecialHits;
             DamageTaken += other.DamageTaken;

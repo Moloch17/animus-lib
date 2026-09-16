@@ -19,6 +19,7 @@
 #include "PetBlock.h"
 #include "CharmInfo.h"
 #include "CreatureAI.h"
+#include "DBCStores.h"
 #include "Layout.h"
 #include "MotionMaster.h"
 #include "Pet.h"
@@ -27,6 +28,7 @@
 #include "Spell.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
+#include "TemporarySummon.h"
 #include <algorithm>
 #include <array>
 
@@ -221,6 +223,50 @@ namespace
     }
 }
 
+static_assert(Animus::Curriculum::PetBlock::OBS_KIND_FIRST + Animus::Curriculum::PetBlock::KIND_COUNT
+    == Animus::Curriculum::PetBlock::OBS_TEMPORARY, "the pet kind one-hot ends where the temporary flag starts");
+
+Animus::Curriculum::PetBlock::PetKind Animus::Curriculum::PetBlock::KindOf(Creature const* pet)
+{
+    enum : uint32
+    {
+        FAMILY_FELHUNTER        = 15,
+        FAMILY_VOIDWALKER       = 16,
+        FAMILY_SUCCUBUS         = 17,
+        FAMILY_IMP              = 23,
+        FAMILY_FELGUARD         = 29,
+        FAMILY_GHOUL            = 40,
+        NPC_WATER_ELEMENTAL     = 510,
+        NPC_WATER_ELEMENTAL_GLYPH = 37994,   // Glyph of Eternal Water's
+    };
+
+    CreatureTemplate const* info = pet ? pet->GetCreatureTemplate() : nullptr;
+    if (!info)
+        return KIND_OTHER;
+
+    if (info->Entry == NPC_WATER_ELEMENTAL || info->Entry == NPC_WATER_ELEMENTAL_GLYPH)
+        return KIND_WATER_ELEMENTAL;
+
+    switch (info->family)
+    {
+        case FAMILY_IMP:        return KIND_IMP;
+        case FAMILY_VOIDWALKER: return KIND_VOIDWALKER;
+        case FAMILY_SUCCUBUS:   return KIND_SUCCUBUS;
+        case FAMILY_FELHUNTER:  return KIND_FELHUNTER;
+        case FAMILY_FELGUARD:   return KIND_FELGUARD;
+        case FAMILY_GHOUL:      return KIND_GHOUL;
+        default:
+            break;
+    }
+
+    // A hunter's beast: its talent tree (ferocity 0, tenacity 1, cunning 2).
+    if (CreatureFamilyEntry const* family = sCreatureFamilyStore.LookupEntry(info->family))
+        if (family->petTalentType >= 0 && family->petTalentType <= 2)
+            return PetKind(KIND_FEROCITY + uint32(family->petTalentType));
+
+    return KIND_OTHER;
+}
+
 bool Animus::Curriculum::PetBlock::HasPet(uint8 playerClass)
 {
     return playerClass == CLASS_HUNTER || playerClass == CLASS_WARLOCK || playerClass == CLASS_DEATH_KNIGHT
@@ -264,6 +310,19 @@ void Animus::Curriculum::PetBlock::Observe(SeatView const& view, float* obs, uin
     }
     obs[OBS_CASTING] = pet->IsNonMeleeSpellCast(false) ? 1.0f : 0.0f;
     obs[OBS_REACT_FIRST + std::min<uint32>(uint32(pet->GetReactState()), 2)] = 1.0f;
+    obs[OBS_KIND_FIRST + KindOf(pet)] = 1.0f;
+
+    // A temporary pet's time left: a controlled pet counts its own duration, a guardian its summon timer.
+    uint32 msLeft = 0;
+    if (Pet const* realPet = pet->ToPet(); realPet && realPet->isTemporarySummoned())
+        msLeft = uint32(realPet->GetDuration().count());
+    else if (TempSummon* summon = pet->ToTempSummon(); summon && !pet->ToPet() && summon->GetTimer())
+        msLeft = summon->GetTimer();
+    if (msLeft)
+    {
+        obs[OBS_TEMPORARY] = 1.0f;
+        obs[OBS_TIME_LEFT] = std::min(1.0f, float(msLeft) / 60000.0f);
+    }
     if (CharmInfo* charmInfo = pet->GetCharmInfo())
     {
         obs[OBS_FOLLOWING] = charmInfo->HasCommandState(COMMAND_FOLLOW) ? 1.0f : 0.0f;
@@ -288,7 +347,7 @@ void Animus::Curriculum::PetBlock::Observe(SeatView const& view, float* obs, uin
         mask[action] = IsAllowed(view, pet, abilities, action) ? 1 : 0;
 }
 
-void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActionResult& /*result*/) const
+void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActionResult& result) const
 {
     if (!HasPet(view.L->Profile->Class))
         return;
@@ -299,6 +358,9 @@ void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActio
         return;
 
     CharmInfo* charmInfo = pet->GetCharmInfo();
+    if (local >= ACTION_PASSIVE)
+        ++result.PetOrders;
+
     switch (local)
     {
         case ACTION_PASSIVE:
@@ -368,5 +430,6 @@ void Animus::Curriculum::PetBlock::Apply(SeatView& view, uint32 local, SeatActio
         && pet->GetVictim() != unitTarget && pet->IsAIEnabled)
         pet->AI()->AttackStart(unitTarget);
 
-    spell->prepare(&(spell->m_targets));
+    if (spell->prepare(&(spell->m_targets)) == SPELL_CAST_OK)
+        ++result.PetAbilities;
 }

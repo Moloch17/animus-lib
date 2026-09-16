@@ -83,6 +83,7 @@ namespace Animus::Curriculum
         uint32 EquippedItems = 0;
         float DamageScale = 1.0f;
         std::vector<uint32> Stable;             // hunters: beasts offered this episode
+        bool PetAtStart = false;                // the episode started with the seat's pet out
 
         /// The highest rank of every catalog action the bot knows, resolved once when the character is built:
         /// walking the rank chain per action per decision is most of what observing a seat costs, and the
@@ -108,6 +109,10 @@ namespace Animus::Curriculum
         BattleSupplies Supplies;
         uint32 ConsumablesUsed = 0;
         uint32 SelfResurrections = 0;
+        uint32 PetAbilities = 0;
+        uint32 PetOrders = 0;
+        bool PetDied = false;                   // a pet the seat had died this episode
+        float LastPetHealth = 0.0f;             // the pet's health at the last decision (0 = no pet)
         uint32 Revives = 0;                     // dead allies (owner, teammates) the seat resurrected
         bool StepRevivedAlly = false;           // an ally the seat resurrected stood up this decision
 
@@ -130,6 +135,10 @@ namespace Animus::Curriculum
             Supplies = BattleSupplies();
             ConsumablesUsed = 0;
             SelfResurrections = 0;
+            PetAbilities = 0;
+            PetOrders = 0;
+            PetDied = false;
+            LastPetHealth = 0.0f;
             Revives = 0;
             StepRevivedAlly = false;
             Combat = CombatTally();

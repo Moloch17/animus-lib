@@ -47,6 +47,9 @@ namespace Animus::Curriculum
             int32 NoisyTalentChance = 30;       // percent of characters: the standard build with points moved
             int32 RandomTalentChance = 10;      // percent: every point spent at random (the rest: standard)
             uint32 TalentNoisePoints = 5;       // a noisy build moves 1 to this many of its last points
+            // Percent of pet-class characters that start the episode with their pet out, as a player arrives with
+            // one: the rest summon it themselves (or not).
+            int32 PetOutChance = 50;
         } Characters;
 
         /// Which party seats have a character, and their roles.
@@ -266,6 +269,7 @@ namespace Animus::Curriculum
             f("Characters.NoisyTalentChance", tuning.Characters.NoisyTalentChance);
             f("Characters.RandomTalentChance", tuning.Characters.RandomTalentChance);
             f("Characters.TalentNoisePoints", tuning.Characters.TalentNoisePoints);
+            f("Characters.PetOutChance", tuning.Characters.PetOutChance);
 
             f("Party.SizeWeight1", tuning.Party.SizeWeight1);
             f("Party.SizeWeight2", tuning.Party.SizeWeight2);

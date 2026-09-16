@@ -127,6 +127,10 @@ namespace Animus::Curriculum
     /// Call Pet itself loads pets from the database). Needs level 10 and no pet out. Returns false if no pet was
     /// created.
     bool CallHunterBeast(Player* bot, uint32 entry);
+
+    /// Whether a hunter can call a stable beast now: old enough, and without a living pet (a dead one is dismissed
+    /// first, as a player does before calling another).
+    [[nodiscard]] bool CanCallHunterBeast(Player* bot);
 }
 
 #endif

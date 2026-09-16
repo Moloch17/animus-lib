@@ -22,7 +22,9 @@
 #include "DuelBlock.h"
 #include "GauntletBlock.h"
 #include "PartyBlock.h"
+#include "PetBlock.h"
 #include "TravelBlock.h"
+#include <array>
 #include <optional>
 
 namespace
@@ -64,6 +66,51 @@ namespace
         float const* _obs;
         uint8 const* _mask;
     };
+
+    /// The summons a pet class's baseline casts when its pet is not out, best first: a warlock's demons from the one
+    /// that soaks a fight best, a death knight's ghoul, a frost mage's elemental.
+    constexpr std::array<uint32, 7> PET_SUMMONS =
+    {
+        30146,  // Summon Felguard
+        697,    // Summon Voidwalker
+        691,    // Summon Felhunter
+        712,    // Summon Succubus
+        688,    // Summon Imp
+        46584,  // Raise Dead
+        31687,  // Summon Water Elemental
+    };
+
+    /// A pet class's pet: call a hunter's first stable beast or cast the best summon when no living pet is out (out
+    /// of combat only: a demon takes seconds to summon), then send the pet at the target.
+    std::optional<int32> PetAction(Row const& row, Layout const& layout)
+    {
+        if (!row.Has(BlockId::Pet) || !PetBlock::HasPet(layout.Profile->Class))
+            return std::nullopt;
+
+        bool const petOut = row.Obs(BlockId::Pet, PetBlock::OBS_PRESENT) > 0.0f
+            && row.Obs(BlockId::Pet, PetBlock::OBS_ALIVE) > 0.0f;
+        bool const inCombat = row.Obs(BlockId::Duel, DuelBlock::OBS_BOT_IN_COMBAT) > 0.0f;
+
+        if (!petOut && !inCombat)
+        {
+            for (uint32 slot = 0; slot < STABLE_SLOTS; ++slot)
+                if (std::optional<int32> call = row.Allowed(BlockId::Duel, DuelBlock::ACTION_CALL_BEAST_FIRST + slot))
+                    return call;
+
+            std::vector<ActionCatalog::Action> const& actions = layout.Catalog().Actions();
+            for (uint32 summon : PET_SUMMONS)
+                for (uint32 action = CoreBlock::FIRST_CAST_ACTION; action < actions.size(); ++action)
+                    if (actions[action].Type == ActionCatalog::Kind::Spell && actions[action].FirstRank == summon)
+                        if (std::optional<int32> cast = row.Allowed(BlockId::Core, action))
+                            return cast;
+        }
+
+        if (petOut)
+            if (std::optional<int32> send = row.Allowed(BlockId::Duel, DuelBlock::ACTION_PET_ATTACK))
+                return send;
+
+        return std::nullopt;
+    }
 
     std::optional<int32> Fight(Row const& row, Layout const& layout)
     {
@@ -152,6 +199,10 @@ namespace
                         return action;
             }
         }
+
+        // A pet class fights with its pet, as a player does: out before the fight, and sent at the target.
+        if (std::optional<int32> pet = PetAction(row, layout))
+            return pet;
 
         if (std::optional<int32> attack = row.Allowed(BlockId::Duel, DuelBlock::ACTION_START_ATTACK))
             return attack;

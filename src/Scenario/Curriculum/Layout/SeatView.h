@@ -142,6 +142,8 @@ namespace Animus::Curriculum
         uint32 ConsumablesUsed = 0;                 // potions, healthstones, bandages, soulstones
         bool SelfResurrected = false;
         uint32 Revives = 0;                         // resurrection spells started on a dead ally
+        uint32 PetAbilities = 0;                    // pet bar abilities the pet started
+        uint32 PetOrders = 0;                       // pet stances, follow and stay, and sending the pet in
     };
 }
 

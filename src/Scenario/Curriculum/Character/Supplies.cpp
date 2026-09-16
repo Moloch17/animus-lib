@@ -23,6 +23,7 @@
 #include "Map.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
+#include "PetTalents.h"
 #include "Player.h"
 #include "Random.h"
 #include "SpellInfo.h"
@@ -359,10 +360,26 @@ void Animus::Curriculum::StockConsumables(Player* bot, uint32 food, uint32 drink
     }
 }
 
+bool Animus::Curriculum::CanCallHunterBeast(Player* bot)
+{
+    if (bot->getClass() != CLASS_HUNTER || bot->GetLevel() < HUNTER_PET_LEVEL)
+        return false;
+
+    if (!bot->GetPetGUID())
+        return true;
+
+    Pet* pet = bot->GetPet();
+    return pet && !pet->IsAlive();
+}
+
 bool Animus::Curriculum::CallHunterBeast(Player* bot, uint32 entry)
 {
-    if (bot->getClass() != CLASS_HUNTER || bot->GetPetGUID() || bot->GetLevel() < HUNTER_PET_LEVEL || !entry)
+    if (!entry || !CanCallHunterBeast(bot))
         return false;
+
+    // A dead pet is dismissed first: the stable holds one current pet, and a corpse still is it.
+    if (Pet* dead = bot->GetPet(); dead && !dead->IsAlive())
+        bot->RemovePet(dead, PET_SAVE_AS_DELETED);
 
     Pet* pet = bot->CreateTamedPetFrom(entry, SPELL_TAME_BEAST);
     if (!pet)
@@ -372,7 +389,12 @@ bool Animus::Curriculum::CallHunterBeast(Player* bot, uint32 entry)
     pet->SetUInt32Value(UNIT_FIELD_LEVEL, bot->GetLevel());
     pet->GetMap()->AddToMap(pet->ToCreature(), true);
     bot->SetMinion(pet, true);
+
+    // As a player's pet is: fed (a freshly tamed beast is unhappy and deals 75% damage; a happy one 125%) and with its
+    // talent points spent.
+    pet->SetPower(POWER_HAPPINESS, pet->GetMaxPower(POWER_HAPPINESS));
     pet->InitTalentForLevel();
+    PetTalents::Spend(bot, pet);
     bot->PetSpellInitialize();
     return true;
 }

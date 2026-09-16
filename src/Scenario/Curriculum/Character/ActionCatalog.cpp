@@ -51,7 +51,6 @@ namespace
             case SPELL_EFFECT_SKILL:
             case SPELL_EFFECT_TAMECREATURE:
             case SPELL_EFFECT_DISMISS_PET:
-            case SPELL_EFFECT_RESURRECT_PET:
             case SPELL_EFFECT_DUEL:
             case SPELL_EFFECT_ENCHANT_ITEM:
             case SPELL_EFFECT_ENCHANT_ITEM_TEMPORARY:
@@ -235,6 +234,7 @@ bool Animus::Curriculum::ActionCatalog::IsCombatSpell(SpellInfo const* info)
             case SPELL_EFFECT_ADD_COMBO_POINTS:
             case SPELL_EFFECT_SUMMON_PET:
             case SPELL_EFFECT_SUMMON:
+            case SPELL_EFFECT_RESURRECT_PET:    // Revive Pet: a hunter's dead pet is its damage and its tank
             case SPELL_EFFECT_TRIGGER_SPELL:
             case SPELL_EFFECT_DUMMY:
             case SPELL_EFFECT_SCRIPT_EFFECT:

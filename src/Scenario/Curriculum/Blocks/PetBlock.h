@@ -44,7 +44,29 @@ namespace Animus::Curriculum
             OBS_REACT_FIRST             = 7,    // one-hot: passive, defensive, aggressive
             OBS_FOLLOWING               = 10,
             OBS_STAYING                 = 11,
-            OBS_SLOT_FIRST              = 12,   // per ability slot SLOT_FEATURES
+            OBS_KIND_FIRST              = 12,   // one-hot: what the pet is (PetKind)
+            OBS_TEMPORARY               = 23,   // it leaves on its own (a ghoul without Master of Ghouls, an elemental)
+            OBS_TIME_LEFT               = 24,   // ... seconds until it does / 60
+            OBS_SLOT_FIRST              = 25,   // per ability slot SLOT_FEATURES
+        };
+
+        /// What a pet is: a hunter beast by its talent tree, a warlock's demon, a ghoul, a Water Elemental. The
+        /// abilities alone do not tell a Voidwalker's tanking from an Imp's casting, or a tenacity beast from a
+        /// ferocity one.
+        enum PetKind : uint32
+        {
+            KIND_FEROCITY = 0,
+            KIND_TENACITY,
+            KIND_CUNNING,
+            KIND_IMP,
+            KIND_VOIDWALKER,
+            KIND_SUCCUBUS,
+            KIND_FELHUNTER,
+            KIND_FELGUARD,
+            KIND_GHOUL,
+            KIND_WATER_ELEMENTAL,
+            KIND_OTHER,
+            KIND_COUNT
         };
 
         /// Per ability slot: present, on cooldown, interrupt, crowd control, dispel, threat, helps an ally, damage.
@@ -83,6 +105,8 @@ namespace Animus::Curriculum
         [[nodiscard]] static bool HasPet(uint8 playerClass);
         /// The bot's controllable pet, if one is out.
         [[nodiscard]] static Creature* FindPet(Player* bot);
+
+        [[nodiscard]] static PetKind KindOf(Creature const* pet);
     };
 }
 
