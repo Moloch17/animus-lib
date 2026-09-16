@@ -82,15 +82,22 @@ namespace
         return SeatCharacter::TalentPlan::Standard;
     }
 
-    /// A level every seat's class can be: `fixed` when set (raised to minLevel), else drawn from the tuning.
+    /// A level every seat's class can be: `fixed` when set (raised to minLevel), else drawn from the tuning: the high
+    /// levels, the low levels (when the classes can be that low), or any level.
     uint8 RandomLevel(uint8 minLevel, uint32 fixed, CurriculumTuning::CharacterTuning const& tuning)
     {
         if (fixed)
             return uint8(std::clamp<uint32>(fixed, minLevel, DEFAULT_MAX_LEVEL));
 
         uint32 const highFirst = std::clamp<uint32>(tuning.HighLevelFirst, 1, DEFAULT_MAX_LEVEL);
-        if (minLevel <= highFirst && roll_chance_i(tuning.HighLevelChance))
+        uint32 const lowLast = std::min<uint32>(tuning.LowLevelLast, DEFAULT_MAX_LEVEL);
+        int32 const roll = irand(0, 99);
+        bool const high = roll < tuning.HighLevelChance;
+        bool const low = !high && roll < tuning.HighLevelChance + tuning.LowLevelChance;
+        if (minLevel <= highFirst && high)
             return uint8(urand(highFirst, DEFAULT_MAX_LEVEL));
+        if (minLevel <= lowLast && low)
+            return uint8(urand(minLevel, lowLast));
         return uint8(urand(minLevel, DEFAULT_MAX_LEVEL));
     }
 
@@ -316,6 +323,12 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
             });
         }
     }
+
+    // Repeats are charged in every stage, by the scenario rather than an encounter.
+    _info.Add("reward_" + std::string(RewardTermName(RewardTerm::Repeat)), [this](Env const& env, uint32 seat)
+    {
+        return Data(env).Seats[seat].Rewards.Episode(RewardTerm::Repeat);
+    });
 
     _spec.EpisodeInfoDim = _info.Size();
 
@@ -578,10 +591,24 @@ void Animus::Curriculum::StageScenario::AddCoreEpisodeInfo()
     {
         return float(tally(env, index).OutOfSightMs) / 1000.0f;
     });
+    // Time the opponent had no path to its victim, and how often it was put back beside it for that.
+    _info.Add("target_unreachable_seconds", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).UnreachableMs) / 1000.0f;
+    });
+    _info.Add("target_teleports", [tally](Env const& env, uint32 index)
+    {
+        return float(tally(env, index).OpponentTeleports);
+    });
     _info.Add("actions_per_minute", [seat](Env const& env, uint32 index)
     {
         float const minutes = std::max(0.001f, float(env.EpisodeElapsedMs) / 60000.0f);
         return float(seat(env, index).ActionsPressed) / minutes;
+    });
+    // Presses of an action past the free ones in its window (Tuning().Actions.Repeat).
+    _info.Add("repeated_presses", [seat](Env const& env, uint32 index)
+    {
+        return float(seat(env, index).RepeatedPresses);
     });
 }
 
@@ -1445,7 +1472,25 @@ void Animus::Curriculum::StageScenario::Press(Env const& env, SeatState& seat, u
     uint32 const now = env.EpisodeElapsedMs;
     uint32 const local = action - layout.Slice(*block).ActionFirst;
     CurriculumTuning::ActionTuning const& pacing = _tuning.Actions;
-    seat.ActionReadyMs[action] = now + (GetBlock(*block).IsMovement(local) ? pacing.MoveRepeatMs : pacing.RepeatMs);
+    bool const movement = GetBlock(*block).IsMovement(local);
+    seat.ActionReadyMs[action] = now + (movement ? pacing.MoveRepeatMs : pacing.RepeatMs);
+
+    // The same action again within the window, past the free presses: charged at the next reward. Movement orders are
+    // always free.
+    if (!movement)
+    {
+        if (seat.PressTimes.size() != layout.NumActions)
+            seat.PressTimes.assign(layout.NumActions, {});
+
+        std::vector<uint32>& presses = seat.PressTimes[action];
+        std::erase_if(presses, [now, &pacing](uint32 pressed) { return pressed + pacing.RepeatWindowMs <= now; });
+        presses.push_back(now);
+        if (presses.size() > pacing.RepeatFree)
+        {
+            ++seat.StepRepeats;
+            ++seat.RepeatedPresses;
+        }
+    }
 
     // Stopping a cast to start the same one again is the loop the stop-cast charge prices; a player does not do it.
     if (*block != BlockId::Duel || local != DuelBlock::ACTION_STOP_CASTING || !seat.CastSpellId)
@@ -1495,12 +1540,19 @@ float Animus::Curriculum::StageScenario::SeatReward(Env& env, uint32 seatIndex)
         seat.PetDied = true;
     seat.LastPetHealth = pet && pet->IsAlive() ? std::max(0.001f, pet->GetHealthPct() / 100.0f) : 0.0f;
 
+    // A new pet's damage abilities go on autocast, as a player sets them once for good (see PetBlock::AutocastDamage).
+    if (pet && pet->IsAlive() && pet->GetGUID() != seat.AutocastPet && PetBlock::AutocastDamage(pet))
+        seat.AutocastPet = pet->GetGUID();
+
     // Standing again (resurrected, or recovered after a pull): the next death is paid for again.
     if (bot && bot->IsAlive())
         seat.Combat.DeathCounted = false;
 
     for (Encounter* encounter : ActiveRewardOrder(env))
         encounter->Reward(env, seatIndex, bot, seat.Rewards);
+
+    seat.Rewards.Add(RewardTerm::Repeat, -_tuning.Actions.Repeat * float(seat.StepRepeats));
+    seat.StepRepeats = 0;
 
     if (bot)
     {

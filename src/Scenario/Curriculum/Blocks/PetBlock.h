@@ -107,6 +107,12 @@ namespace Animus::Curriculum
         [[nodiscard]] static Creature* FindPet(Player* bot);
 
         [[nodiscard]] static PetKind KindOf(Creature const* pet);
+
+        /// Put the pet's damage abilities on autocast (an Imp's Firebolt, a Succubus' Lash of Pain, a beast's Claw).
+        /// A pet learns its spells with autocast off, and a player turns it on once, for good; a bot never does, so
+        /// an Imp, which cannot melee, did nothing at all. Control, threat and utility abilities stay the policy's to
+        /// cast. Returns whether the pet's spells were there to set (false: a pet that has not learned them yet).
+        static bool AutocastDamage(Creature* pet);
     };
 }
 

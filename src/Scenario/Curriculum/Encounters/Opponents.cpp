@@ -24,6 +24,7 @@
 #include "Log.h"
 #include "Map.h"
 #include "ObjectMgr.h"
+#include "PathGenerator.h"
 #include "Pet.h"
 #include "Player.h"
 #include "Random.h"
@@ -32,15 +33,18 @@
 #include "SummonLevel.h"
 #include "TemporarySummon.h"
 #include "WorldCreatures.h"
+#include <algorithm>
 #include <cmath>
 #include <map>
+#include <optional>
 #include <unordered_set>
 
 namespace
 {
-    constexpr uint32 SPAWN_ATTEMPTS = 12;
+    constexpr uint32 SPAWN_ATTEMPTS = 24;
     constexpr float PACK_SPREAD = 5.0f;
     constexpr float MAX_HEIGHT_DIFFERENCE = 6.0f;
+    constexpr float MAX_PATH_DETOUR = 1.5f;     // a walking path at most this many times the straight line
 
     constexpr uint32 UNUSABLE_UNIT_FLAGS = UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_IMMUNE_TO_PC | UNIT_FLAG_NOT_SELECTABLE
         | UNIT_FLAG_PACIFIED;
@@ -62,6 +66,45 @@ namespace
             default:
                 return false;
         }
+    }
+
+    /// Whether a creature spawns out of reach or out of sight whatever the seat does: hovering or flying in the air,
+    /// unable to walk, rooted, or stealthed or invisible by its addon's auras. stage1_duel's Witchwing Ambusher
+    /// (stealthed) was never once seen, let alone killed, in 20 evaluation episodes.
+    bool SpawnsUnreachable(CreatureTemplate const& info)
+    {
+        CreatureMovementData const& movement = info.Movement;
+        if (!movement.IsGroundAllowed() || movement.IsFlightAllowed() || movement.IsRooted())
+            return true;
+
+        CreatureAddon const* addon = sObjectMgr->GetCreatureTemplateAddon(info.Entry);
+        if (!addon)
+            return false;
+
+        if ((addon->bytes1 >> 24) & 0xFF)       // UNIT_BYTES_1_OFFSET_ANIM_TIER: hovering, flying or submerged
+            return true;
+
+        return std::any_of(addon->auras.begin(), addon->auras.end(), [](uint32 spellId)
+        {
+            SpellInfo const* aura = sSpellMgr->GetSpellInfo(spellId);
+            return aura && (aura->HasAura(SPELL_AURA_MOD_STEALTH) || aura->HasAura(SPELL_AURA_MOD_INVISIBILITY));
+        });
+    }
+
+    /// Whether the bot can walk to (x, y, z) by a path not much longer than the straight line: the creature spawned
+    /// there then has a path back. A creature with no path to its victim stands still and regenerates its health
+    /// (Creature::IsNotReachableAndNeedRegen), which stage1_duel met in 125 of its 641 opponents.
+    bool Walkable(Player* bot, float x, float y, float z)
+    {
+        PathGenerator path(bot);
+        if (!path.CalculatePath(x, y, z))
+            return false;
+
+        PathType const type = path.GetPathType();
+        if (type & PATHFIND_NOT_USING_PATH)
+            return true;        // no navigation mesh to check against
+
+        return (type & PATHFIND_NORMAL) && path.getPathLength() <= bot->GetExactDist(x, y, z) * MAX_PATH_DETOUR;
     }
 }
 
@@ -102,7 +145,7 @@ Animus::Curriculum::Opponents::OpponentPool::OpponentPool()
         // Plain combat creatures with sane stat multipliers.
         if (!IsFairOpponentType(info.type) || info.npcflag || info.VehicleId || (info.unit_flags & UNUSABLE_UNIT_FLAGS)
             || (info.flags_extra & UNUSABLE_EXTRA_FLAGS) || info.ModHealth < 0.5f || info.ModHealth > 2.0f
-            || info.DamageModifier < 0.5f || info.DamageModifier > 2.0f || !info.minlevel)
+            || info.DamageModifier < 0.5f || info.DamageModifier > 2.0f || !info.minlevel || SpawnsUnreachable(info))
             continue;
 
         // Default AI: no SmartAI or C++ script that could summon, flee or despawn.
@@ -173,10 +216,12 @@ uint32 Animus::Curriculum::Opponents::OpponentPool::RandomElite(uint8 level) con
 
 Position Animus::Curriculum::Opponents::FindSpawnPoint(Player* bot, Map* map)
 {
-    // A random bearing and distance; retry a few bearings for a spot in line of sight on roughly level
-    // ground, so the opponent is reachable. The last try is used regardless.
+    // A random bearing and distance; retry bearings for a spot in line of sight on roughly level ground that the bot
+    // can walk to, so the opponent is reachable. Without one, a walkable spot out of sight; the last try otherwise.
     Position pos;
-    for (uint32 attempt = 0; attempt < SPAWN_ATTEMPTS; ++attempt)
+    std::optional<Position> walkable;
+    bool found = false;
+    for (uint32 attempt = 0; attempt < SPAWN_ATTEMPTS && !found; ++attempt)
     {
         float const bearing = frand(0.0f, 2.0f * float(M_PI));
         float const distance = frand(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX);
@@ -190,10 +235,17 @@ Position Animus::Curriculum::Opponents::FindSpawnPoint(Player* bot, Map* map)
             continue;
 
         pos.m_positionZ = ground;
-        if (std::fabs(ground - bot->GetPositionZ()) < MAX_HEIGHT_DIFFERENCE
-            && bot->IsWithinLOS(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ() + 2.0f))
-            break;
+        if (std::fabs(ground - bot->GetPositionZ()) >= MAX_HEIGHT_DIFFERENCE
+            || !Walkable(bot, pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ()))
+            continue;
+
+        found = bot->IsWithinLOS(pos.GetPositionX(), pos.GetPositionY(), pos.GetPositionZ() + 2.0f);
+        if (!found && !walkable)
+            walkable = pos;
     }
+
+    if (!found && walkable)
+        pos = *walkable;
 
     // A random facing, so the bot has to learn to get behind it.
     pos.SetOrientation(frand(0.0f, 2.0f * float(M_PI)));
@@ -217,6 +269,9 @@ Creature* Animus::Curriculum::Opponents::SummonOpponent(Player* bot, Map* map, u
     opponent->SetReactState(REACT_AGGRESSIVE);
     opponent->SetHomePosition(pos);
     opponent->SetFullHealth();
+    // A creature that loses its path to the seat mid-fight (kited onto a ledge, round a rock) stops and regenerates
+    // to full: a fight nobody can win however well it is played. It still heals when it evades home.
+    opponent->SetRegeneratingHealth(false);
 
     return opponent;
 }

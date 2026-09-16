@@ -41,8 +41,8 @@ namespace Animus::Curriculum::Opponents
     constexpr float SPAWN_DISTANCE_MAX = 50.0f;
 
     /// Real creatures fit to be a fair same-level opponent: normal rank, attackable, no script, no
-    /// NPC services, not civilian/guard/trigger/vehicle, and spawned somewhere in the world. Loaded
-    /// once and bucketed by the levels each creature naturally has.
+    /// NPC services, not civilian/guard/trigger/vehicle, walking on the ground in plain sight, and spawned
+    /// somewhere in the world. Loaded once and bucketed by the levels each creature naturally has.
     class OpponentPool
     {
     public:
@@ -69,10 +69,12 @@ namespace Animus::Curriculum::Opponents
         std::array<std::vector<uint32>, 81> _elitesByLevel;
     };
 
-    /// A random spot 40-50 yd from the bot, in line of sight on roughly level ground, with a random facing.
+    /// A random spot 40-50 yd from the bot, in line of sight on roughly level ground the bot can walk to (so a
+    /// creature there has a path to it), with a random facing.
     [[nodiscard]] Position FindSpawnPoint(Player* bot, Map* map);
 
-    /// Summon `entry` at `pos` and `level`, hostile to players and aggressive. Returns nullptr on failure.
+    /// Summon `entry` at `pos` and `level`, hostile to players and aggressive, and not regenerating health in a fight
+    /// it cannot reach. Returns nullptr on failure.
     Creature* SummonOpponent(Player* bot, Map* map, uint32 entry, Position const& pos, uint8 level);
 
     /// Summon `entry` at the bot's level at a random bearing and distance from the bot, facing a random

@@ -23,11 +23,18 @@
 #include "Opponents.h"
 #include "Player.h"
 
+namespace
+{
+    /// How long a creature duel's opponent may have no path to its victim before it is put beside it (the core evades
+    /// it after 10 s, and it regenerates from 5 s before that).
+    constexpr uint32 UNREACHABLE_TELEPORT_MS = 3000;
+}
+
 std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::CreatureEncounter::RewardTerms() const
 {
     return { RewardTerm::StepCost, RewardTerm::DamageDealt, RewardTerm::DamageTaken, RewardTerm::Casting,
         RewardTerm::Approach, RewardTerm::StealthOpener, RewardTerm::StealthUtility, RewardTerm::Kill,
-        RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::Timeout };
+        RewardTerm::HealthKept, RewardTerm::Death, RewardTerm::Timeout, RewardTerm::Stall, RewardTerm::Spacing };
 }
 
 bool Animus::Curriculum::CreatureEncounter::Build(Env& env, Map* map, uint8 /*level*/)
@@ -52,21 +59,56 @@ void Animus::Curriculum::CreatureEncounter::Reward(Env& env, uint32 seat, Player
     Unit* opponent = env.FindTargetUnit(0);
     CombatReward::OneOnOne(_scenario, env, seat, bot, opponent, ledger);
 
-    CombatTally& tally = _scenario.Data(env).Seats[seat].Combat;
+    SeatState& seatState = _scenario.Data(env).Seats[seat];
+    CombatTally& tally = seatState.Combat;
+    CurriculumTuning::DuelTuning const& tuning = _scenario.Tuning().Duel;
     if (bot && opponent && opponent->IsAlive())
     {
         uint32 const decisionMs = _scenario.DecisionMs();
-        if (Creature* creature = opponent->ToCreature(); creature && creature->IsInEvadeMode())
+        float const seconds = float(decisionMs) / 1000.0f;
+        Creature* creature = opponent->ToCreature();
+        if (creature && creature->IsInEvadeMode())
             tally.TargetEvadeMs += decisionMs;
+        if (creature && creature->CanNotReachTarget())
+        {
+            tally.UnreachableMs += decisionMs;
+            tally.UnreachableStreakMs += decisionMs;
+
+            // A creature with no path to its victim regenerates, and evades home at full health after 10 s: a fight
+            // no play can win. Put it beside its victim first, as instance trash does with
+            // Creature.Instance.TeleportToUnreachableTarget.
+            Unit* victim = creature->GetVictim();
+            if (tally.UnreachableStreakMs >= UNREACHABLE_TELEPORT_MS && victim && victim->IsAlive()
+                && victim->IsInMap(creature))
+            {
+                creature->NearTeleportTo(victim->GetPositionX(), victim->GetPositionY(), victim->GetPositionZ(),
+                    victim->GetOrientation());
+                creature->SetCannotReachTarget();
+                tally.UnreachableStreakMs = 0;
+                ++tally.OpponentTeleports;
+            }
+        }
+        else
+            tally.UnreachableStreakMs = 0;
         if (tally.Engaged && bot->IsAlive() && !bot->IsWithinLOSInMap(opponent))
             tally.OutOfSightMs += decisionMs;
+
+        // The fight not started once the grace is gone: standing where it spawned is paid for as it happens, not
+        // only when the clock runs out.
+        if (!tally.Engaged && bot->IsAlive() && env.EpisodeElapsedMs > tuning.StallGraceMs)
+            ledger.Add(RewardTerm::Stall, -tuning.Stall * seconds);
+
+        // A ranged spec with the opponent hitting it in melee.
+        if (bot->IsAlive() && seatState.L && seatState.L->Profile->Specs[seatState.Spec].Range != RangeBand::Melee
+            && opponent->GetVictim() == bot && opponent->IsWithinMeleeRange(bot))
+            ledger.Add(RewardTerm::Spacing, -tuning.Spacing * seconds);
     }
 
     // Out of time with neither side dead: the fight is lost (IsTerminal ends it as a loss, not a cut-off).
     if (!tally.Killed && !tally.Died && !tally.TimedOut && TimeIsUp(env))
     {
         tally.TimedOut = true;
-        ledger.Add(RewardTerm::Timeout, -_scenario.Tuning().Duel.Timeout);
+        ledger.Add(RewardTerm::Timeout, -tuning.Timeout);
     }
 }
 

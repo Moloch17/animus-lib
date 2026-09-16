@@ -70,7 +70,8 @@ Animus::Curriculum::CurriculumTuning Animus::Curriculum::CurriculumTuning::Load(
         value = loaded;
     });
 
-    ClampPercent(prefix, "Characters.HighLevelChance", tuning.Characters.HighLevelChance);
+    ClampRolePair(prefix, "Characters.HighLevelChance", tuning.Characters.HighLevelChance,
+        "Characters.LowLevelChance", tuning.Characters.LowLevelChance);
     ClampPercent(prefix, "Characters.PetOutChance", tuning.Characters.PetOutChance);
     ClampRolePair(prefix, "Characters.NoisyTalentChance", tuning.Characters.NoisyTalentChance,
         "Characters.RandomTalentChance", tuning.Characters.RandomTalentChance);

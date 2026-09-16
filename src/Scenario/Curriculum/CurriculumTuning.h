@@ -41,6 +41,11 @@ namespace Animus::Curriculum
         {
             uint32 HighLevelFirst = 61;         // levels at or above this are "high"
             int32 HighLevelChance = 50;         // percent of characters drawn from the high levels
+            /// Levels at or below this are "low". With half the characters at 61-80 and the rest spread over every
+            /// level, only one in eight was 1-20, and those fights were the ones lost most (stage1_duel at 20M: 69%
+            /// won at 1-10, 77% at 11-20, 85%+ from 31 on).
+            uint32 LowLevelLast = 20;
+            int32 LowLevelChance = 15;          // percent of characters drawn from the low levels (the rest: any level)
             // How a character's talents are spent (see TalentBuilder). A standard build is always the same for a
             // spec and a level, so a policy trained on those alone has nothing to read in its talent features: some
             // characters move a few points, some spend them all at random, and the policy has to play what it got.
@@ -101,6 +106,16 @@ namespace Animus::Curriculum
             /// started (stage1_duel at 30M: none of the 11 failed warlock episodes took any damage). As Death, so
             /// neither way of losing is the cheaper one to learn.
             float Timeout = 10.0f;
+            /// Creature duel: per second the fight has not started once StallGraceMs of the episode are gone. Timeout
+            /// alone charges standing still only at the end of the clock, 900 decisions away: stage1_duel at 20M had
+            /// its deterministic policy stand where it spawned for all 90 s in 67 of 2048 episodes (21 without a
+            /// single action), fights the same policy sampled won.
+            float Stall = 0.05f;
+            uint32 StallGraceMs = 15000;        // summoning a pet, buffing and sneaking up in stealth fit in this
+            /// Creature duel, ranged specs: per second the opponent stands in melee range hitting the bot. The approach
+            /// shaping only pays for closing in, so nothing told a hunter, mage or warlock to keep the range it
+            /// fights best at (stage1_duel at 20M: 88 of 96 hunter kills ended within 5 yd).
+            float Spacing = 0.03f;
             float MeleeRange = 3.5f;            // the range the approach shaping aims for, melee specs
             float RangedRange = 25.0f;          // ... ranged specs
         } Duel;
@@ -134,6 +149,14 @@ namespace Animus::Curriculum
             uint32 MoveRepeatMs = 300;          // the same movement order again (steering stays responsive)
             uint32 StopCastMinMs = 500;         // a cast the bot is in cannot be stopped before it ran this long
             uint32 RecastAfterStopMs = 2000;    // a spell the bot stopped itself cannot be started again for this long
+            /// Pressing the same action over and over. Pacing caps how often an action can be pressed, not how many
+            /// times in a row: stage1_duel's warlocks gave their pet 93 orders an episode, a second apart, and the
+            /// pet dealt 1% of their damage. Each press of an action counts the presses of that same action within
+            /// the last RepeatWindowMs; past the free ones, each costs Repeat. How often the seat acts overall is not
+            /// charged, only the same button again, and movement orders never are: steering is always free.
+            float Repeat = 0.02f;
+            uint32 RepeatWindowMs = 10000;
+            uint32 RepeatFree = 3;              // presses of one action within the window that cost nothing
         } Actions;
 
         /// Packs and the gauntlet's pull after pull.
@@ -287,6 +310,8 @@ namespace Animus::Curriculum
         {
             f("Characters.HighLevelFirst", tuning.Characters.HighLevelFirst);
             f("Characters.HighLevelChance", tuning.Characters.HighLevelChance);
+            f("Characters.LowLevelLast", tuning.Characters.LowLevelLast);
+            f("Characters.LowLevelChance", tuning.Characters.LowLevelChance);
             f("Characters.NoisyTalentChance", tuning.Characters.NoisyTalentChance);
             f("Characters.RandomTalentChance", tuning.Characters.RandomTalentChance);
             f("Characters.TalentNoisePoints", tuning.Characters.TalentNoisePoints);
@@ -316,6 +341,9 @@ namespace Animus::Curriculum
             f("Duel.HealthKept", tuning.Duel.HealthKept);
             f("Duel.Death", tuning.Duel.Death);
             f("Duel.Timeout", tuning.Duel.Timeout);
+            f("Duel.Stall", tuning.Duel.Stall);
+            f("Duel.StallGraceMs", tuning.Duel.StallGraceMs);
+            f("Duel.Spacing", tuning.Duel.Spacing);
             f("Duel.MeleeRange", tuning.Duel.MeleeRange);
             f("Duel.RangedRange", tuning.Duel.RangedRange);
 
@@ -327,6 +355,9 @@ namespace Animus::Curriculum
             f("Actions.MoveRepeatMs", tuning.Actions.MoveRepeatMs);
             f("Actions.StopCastMinMs", tuning.Actions.StopCastMinMs);
             f("Actions.RecastAfterStopMs", tuning.Actions.RecastAfterStopMs);
+            f("Actions.Repeat", tuning.Actions.Repeat);
+            f("Actions.RepeatWindowMs", tuning.Actions.RepeatWindowMs);
+            f("Actions.RepeatFree", tuning.Actions.RepeatFree);
 
             f("Pulls.LinkedChance", tuning.Pulls.LinkedChance);
             f("Pulls.EliteChance", tuning.Pulls.EliteChance);

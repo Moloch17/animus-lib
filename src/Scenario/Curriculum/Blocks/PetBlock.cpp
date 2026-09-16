@@ -267,6 +267,33 @@ Animus::Curriculum::PetBlock::PetKind Animus::Curriculum::PetBlock::KindOf(Creat
     return KIND_OTHER;
 }
 
+bool Animus::Curriculum::PetBlock::AutocastDamage(Creature* pet)
+{
+    // Guardians with a charm bar (a ghoul without Master of Ghouls, a Water Elemental without its glyph) already
+    // autocast their targeted spells (CharmInfo::InitCharmCreateSpells); a controlled pet keeps what it learned.
+    Pet* realPet = pet ? pet->ToPet() : nullptr;
+    if (!realPet)
+        return true;
+    if (realPet->m_spells.empty())
+        return false;
+
+    for (auto const& [spellId, spell] : realPet->m_spells)
+    {
+        if (spell.state == PETSPELL_REMOVED || spell.active != ACT_DISABLED)
+            continue;
+
+        SpellInfo const* info = sSpellMgr->GetSpellInfo(spellId);
+        if (!info || !info->IsAutocastable() || Classify(info).Best != KIND_DAMAGE)
+            continue;
+
+        realPet->ToggleAutocast(info, true);
+        if (CharmInfo* charmInfo = realPet->GetCharmInfo())
+            charmInfo->SetSpellAutocast(info, true);
+    }
+
+    return true;
+}
+
 bool Animus::Curriculum::PetBlock::HasPet(uint8 playerClass)
 {
     return playerClass == CLASS_HUNTER || playerClass == CLASS_WARLOCK || playerClass == CLASS_DEATH_KNIGHT

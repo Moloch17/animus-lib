@@ -62,6 +62,9 @@ namespace Animus::Curriculum
         CarrierKill,
         FlagLost,
         Timeout,
+        Stall,
+        Spacing,
+        Repeat,
         Count
     };
 

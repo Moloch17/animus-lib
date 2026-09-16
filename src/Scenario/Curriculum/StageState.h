@@ -69,6 +69,9 @@ namespace Animus::Curriculum
         bool TimedOut = false;                  // creature duel: the clock ran out with neither side dead
         uint32 TargetEvadeMs = 0;               // creature duel: time the opponent spent evading (leashed, unreachable)
         uint32 OutOfSightMs = 0;                // creature duel: time engaged without line of sight to the opponent
+        uint32 UnreachableMs = 0;               // creature duel: time the opponent had no path to its victim
+        uint32 UnreachableStreakMs = 0;         // ... without a break, up to now
+        uint32 OpponentTeleports = 0;           // ... times it was put back beside its victim for it
     };
 
     /// One learned agent: its character, as built for the episode, and its episode totals.
@@ -126,6 +129,14 @@ namespace Animus::Curriculum
         uint32 CastStartMs = 0;
         uint32 ActionsPressed = 0;              // actions other than the no-op the seat took
 
+        // Repeats (ActionTuning::Repeat): per layout action, the episode times of its presses within the window (empty
+        // until the first press); the charged presses since the last reward, and over the episode.
+        std::vector<std::vector<uint32>> PressTimes;
+        uint32 StepRepeats = 0;
+        uint32 RepeatedPresses = 0;
+
+        ObjectGuid AutocastPet;                 // the pet whose damage abilities were set to autocast
+
         CombatTally Combat;
         RewardLedger Rewards;
 
@@ -155,6 +166,10 @@ namespace Animus::Curriculum
             CastSpellId = 0;
             CastStartMs = 0;
             ActionsPressed = 0;
+            PressTimes.clear();
+            StepRepeats = 0;
+            RepeatedPresses = 0;
+            AutocastPet.Clear();
             Combat = CombatTally();
             Rewards.ResetEpisode();
         }
