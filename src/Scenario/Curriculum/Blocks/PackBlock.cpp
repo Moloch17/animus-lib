@@ -39,7 +39,7 @@ namespace
     }
 }
 
-Animus::Curriculum::BlockSize Animus::Curriculum::PackBlock::Size(Layout const& layout) const
+Animus::Curriculum::BlockSize Animus::Curriculum::PackBlock::Size(Layout const& /*layout*/) const
 {
     return { OBS_GLOBAL_COUNT + PACK_SLOTS * SLOT_FEATURES, PACK_SLOTS };
 }

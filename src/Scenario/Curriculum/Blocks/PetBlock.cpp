@@ -223,7 +223,7 @@ namespace
     }
 }
 
-static_assert(Animus::Curriculum::PetBlock::OBS_KIND_FIRST + Animus::Curriculum::PetBlock::KIND_COUNT
+static_assert(uint32(Animus::Curriculum::PetBlock::OBS_KIND_FIRST) + Animus::Curriculum::PetBlock::KIND_COUNT
     == Animus::Curriculum::PetBlock::OBS_TEMPORARY, "the pet kind one-hot ends where the temporary flag starts");
 
 Animus::Curriculum::PetBlock::PetKind Animus::Curriculum::PetBlock::KindOf(Creature const* pet)
@@ -337,7 +337,7 @@ void Animus::Curriculum::PetBlock::Observe(SeatView const& view, float* obs, uin
     }
     obs[OBS_CASTING] = pet->IsNonMeleeSpellCast(false) ? 1.0f : 0.0f;
     obs[OBS_REACT_FIRST + std::min<uint32>(uint32(pet->GetReactState()), 2)] = 1.0f;
-    obs[OBS_KIND_FIRST + KindOf(pet)] = 1.0f;
+    obs[uint32(OBS_KIND_FIRST) + KindOf(pet)] = 1.0f;
 
     // A temporary pet's time left: a controlled pet counts its own duration, a guardian its summon timer.
     uint32 msLeft = 0;

@@ -46,7 +46,7 @@ namespace
     }
 }
 
-Animus::Curriculum::BlockSize Animus::Curriculum::GauntletBlock::Size(Layout const& layout) const
+Animus::Curriculum::BlockSize Animus::Curriculum::GauntletBlock::Size(Layout const& /*layout*/) const
 {
     return { OBS_GLOBAL_COUNT, ACTION_COUNT };
 }
