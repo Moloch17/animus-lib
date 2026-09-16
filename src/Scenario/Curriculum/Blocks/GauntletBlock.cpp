@@ -33,12 +33,8 @@ namespace
     bool IsAllowed(SeatView const& view, uint32 action)
     {
         Player* bot = view.Bot;
-        if (action >= GauntletBlock::ACTION_SUSTAIN_FIRST)
-        {
-            std::vector<ActionCatalog::Action> const& sustain = view.L->Catalog().Sustain();
-            uint32 const index = action - GauntletBlock::ACTION_SUSTAIN_FIRST;
-            return index < sustain.size() && Encoding::IsSpellActionAllowed(view, view.Target, sustain[index]);
-        }
+        if (action >= GauntletBlock::ACTION_COUNT)
+            return false;
 
         bool const eat = action == GauntletBlock::ACTION_EAT;
         uint32 const item = eat ? view.FoodItem : view.DrinkItem;
@@ -52,14 +48,12 @@ namespace
 
 Animus::Curriculum::BlockSize Animus::Curriculum::GauntletBlock::Size(Layout const& layout) const
 {
-    uint32 const sustain = uint32(layout.Catalog().Sustain().size());
-    return { OBS_GLOBAL_COUNT + sustain * 2, ACTION_SUSTAIN_FIRST + sustain };
+    return { OBS_GLOBAL_COUNT, ACTION_COUNT };
 }
 
-void Animus::Curriculum::GauntletBlock::DescribeManifest(Layout const& layout, boost::json::object& block) const
+void Animus::Curriculum::GauntletBlock::DescribeManifest(Layout const& /*layout*/, boost::json::object& block) const
 {
     block["consumables"] = CONSUMABLE_COUNT;
-    block["sustain"] = SpellList(layout.Catalog().Sustain());
 }
 
 void Animus::Curriculum::GauntletBlock::Observe(SeatView const& view, float* obs, uint8* mask) const
@@ -77,8 +71,6 @@ void Animus::Curriculum::GauntletBlock::Observe(SeatView const& view, float* obs
     obs[OBS_FOOD_LEFT] = view.FoodItem ? float(bot->GetItemCount(view.FoodItem)) / float(CONSUMABLE_COUNT) : 0.0f;
     obs[OBS_DRINK_LEFT] = view.DrinkItem ? float(bot->GetItemCount(view.DrinkItem)) / float(CONSUMABLE_COUNT) : 0.0f;
 
-    Encoding::WriteKnownCooldowns(bot, view.L->Catalog().Sustain(), obs + OBS_GLOBAL_COUNT);
-
     uint32 const actions = view.L->Slice(BlockId::Gauntlet).ActionCount;
     for (uint32 action = 0; mask && action < actions; ++action)
         mask[action] = IsAllowed(view, action) ? 1 : 0;
@@ -90,14 +82,6 @@ void Animus::Curriculum::GauntletBlock::Apply(SeatView& view, uint32 local, Seat
         return;
 
     Player* bot = view.Bot;
-    if (local >= ACTION_SUSTAIN_FIRST)
-    {
-        if (Encoding::ApplySpellAction(view, view.Target, view.L->Catalog().Sustain()[local - ACTION_SUSTAIN_FIRST],
-            result))
-            ++result.SustainCasts;
-        return;
-    }
-
     bool const eat = local == ACTION_EAT;
     Item* item = bot->GetItemByEntry(eat ? view.FoodItem : view.DrinkItem);
     if (!item)

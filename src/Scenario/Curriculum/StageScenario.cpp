@@ -1581,6 +1581,16 @@ void Animus::Curriculum::StageScenario::WriteState(Env const& env, float* state)
         for (uint32 seat = 0; seat < _seatCount; ++seat)
             if (victim && victim == bots[seat])
                 features[STATE_ENEMY_ON_SEAT_FIRST + seat] = 1.0f;
+
+        if (Player* lead = bots[0])
+        {
+            features[STATE_ENEMY_MAX_HEALTH] = std::min(1.0f,
+                float(enemy->GetMaxHealth()) / float(std::max<uint32>(1, lead->GetMaxHealth())) / 4.0f);
+            features[STATE_ENEMY_ARMOR] = Encoding::ArmorReduction(enemy, lead->GetLevel());
+        }
+        features[STATE_ENEMY_DAMAGE_MODIFIER] = Encoding::DamageModifier(enemy) / 2.0f;
+        features[STATE_ENEMY_RUN_SPEED] = enemy->GetSpeedRate(MOVE_RUN) / 2.0f;
+        Encoding::WriteOpponentType(enemy, features + STATE_ENEMY_TYPE_FIRST);
     }
 }
 

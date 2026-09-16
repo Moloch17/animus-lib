@@ -74,8 +74,25 @@ namespace Animus::Curriculum
             OBS_LAST_SEEN_BEARING_SIN   = 33,   // direction to that place relative to the bot's facing
             OBS_LAST_SEEN_BEARING_COS   = 34,
             OBS_TARGET_IN_LINE_OF_SIGHT = 35,   // nothing in the way: casts can reach it, and it can reach the bot
-            OBS_STABLE_FIRST            = 36,   // hunters: per stable slot STABLE_FEATURES
-            OBS_COUNT_WITHOUT_STABLE    = 36
+            // What the target is, which decides what works on it: a player reads the same off a nameplate and a
+            // tooltip, and learns it after a first spell fails. Without it a Fear on a fear-immune undead or a fire
+            // spell on a fire elemental just failed with nothing to say why.
+            OBS_TARGET_TYPE_FIRST       = 36,   // one-hot over Encoding::OPPONENT_TYPES (7); a player is humanoid
+            OBS_TARGET_MAX_HEALTH       = 43,   // its max health / the bot's / 4, clamped
+            OBS_TARGET_DAMAGE_MODIFIER  = 44,   // its template's damage multiplier / 2 (1 for a player)
+            OBS_TARGET_ARMOR            = 45,   // the share of the bot's physical hits its armor takes off (0-0.75)
+            OBS_TARGET_RUN_SPEED        = 46,   // run speed rate / 2
+            OBS_TARGET_LEVEL_DIFFERENCE = 47,   // (its level - the bot's) / 5, clamped to [-1, 1]
+            OBS_TARGET_IMMUNE_SCHOOL_FIRST = 48, // immune to Encoding::OBSERVED_SCHOOLS (6)
+            OBS_TARGET_IMMUNE_MECHANIC_FIRST = 54, // immune to Encoding::OBSERVED_MECHANICS (6)
+            // The bot's own crowd control, with or without a target.
+            OBS_BOT_STUNNED             = 60,
+            OBS_BOT_FEARED              = 61,   // feared or confused
+            OBS_BOT_ROOTED              = 62,
+            OBS_BOT_SILENCED            = 63,
+            OBS_BOT_SNARED              = 64,
+            OBS_STABLE_FIRST            = 65,   // hunters: per stable slot STABLE_FEATURES
+            OBS_COUNT_WITHOUT_STABLE    = 65
         };
 
         /// Per stabled beast: offered, family / 50, ferocity, tenacity, cunning.

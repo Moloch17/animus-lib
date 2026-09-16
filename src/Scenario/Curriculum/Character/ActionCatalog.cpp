@@ -347,11 +347,12 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
             && !chains.contains(chainOf(info)) && !tacticalChains.contains(chainOf(info)))
             sustainChains.insert(chainOf(info));
 
-    auto const spellAction = [](uint32 firstRank)
+    auto const spellAction = [](uint32 firstRank, Group from)
     {
         SpellInfo const* info = sSpellMgr->GetSpellInfo(firstRank);
 
         Action action;
+        action.From = from;
         action.Type = Kind::Spell;
         action.Name = ActionName(info);
         action.FirstRank = firstRank;
@@ -364,16 +365,21 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
     _actions.push_back({ Kind::CancelQueued, "cancel_queued" });
 
     for (uint32 firstRank : chains)
-        _actions.push_back(spellAction(firstRank));
+        _actions.push_back(spellAction(firstRank, Group::Combat));
 
     _actions.push_back({ Kind::Trinket, "trinket_1", 0, EQUIPMENT_SLOT_TRINKET1 });
     _actions.push_back({ Kind::Trinket, "trinket_2", 0, EQUIPMENT_SLOT_TRINKET2 });
 
     for (uint32 firstRank : tacticalChains)
-        _tactical.push_back(spellAction(firstRank));
+        _tactical.push_back(spellAction(firstRank, Group::Tactical));
 
     for (uint32 firstRank : sustainChains)
-        _sustain.push_back(spellAction(firstRank));
+        _sustain.push_back(spellAction(firstRank, Group::Sustain));
+
+    // The whole kit is the core's: a duel healer heals itself and a duel mage polymorphs, as players do. The
+    // lists stay for what casts them elsewhere (ally heals).
+    _actions.insert(_actions.end(), _tactical.begin(), _tactical.end());
+    _actions.insert(_actions.end(), _sustain.begin(), _sustain.end());
 
     std::set<uint32> reviveChains;
     for (uint32 spellId : candidates)
@@ -385,7 +391,7 @@ Animus::Curriculum::ActionCatalog::ActionCatalog(uint8 playerClass, ClassKit con
     }
 
     for (uint32 firstRank : reviveChains)
-        _revives.push_back(spellAction(firstRank));
+        _revives.push_back(spellAction(firstRank, Group::None));
 
     if (playerClass == CLASS_WARLOCK)
         _revives.push_back({ Kind::Soulstone, "soulstone" });

@@ -336,6 +336,37 @@ namespace Animus::Curriculum::Encoding
             || unit->HasAuraType(SPELL_AURA_MOD_PACIFY_SILENCE) || unit->HasAuraType(SPELL_AURA_TRANSFORM);
     }
 
+    void WriteOpponentType(Unit const* unit, float* out)
+    {
+        uint32 const type = unit->IsPlayer() ? CREATURE_TYPE_HUMANOID : unit->GetCreatureType();
+        for (uint32 i = 0; i < OPPONENT_TYPES.size(); ++i)
+            out[i] = OPPONENT_TYPES[i] == type ? 1.0f : 0.0f;
+    }
+
+    float DamageModifier(Unit const* unit)
+    {
+        Creature const* creature = unit->ToCreature();
+        return creature && creature->GetCreatureTemplate() ? creature->GetCreatureTemplate()->DamageModifier : 1.0f;
+    }
+
+    float ArmorReduction(Unit const* unit, uint8 attackerLevel)
+    {
+        // Unit::CalcArmorReducedDamage, before armor penetration.
+        float const value = 0.1f * float(unit->GetArmor()) / (8.5f * float(attackerLevel) + 40.0f);
+        return std::clamp(value / (1.0f + value), 0.0f, 0.75f);
+    }
+
+    bool IsImmuneToSchool(Unit const* unit, SpellSchools school)
+    {
+        return unit->IsImmunedToDamageOrSchool(SpellSchoolMask(1 << school));
+    }
+
+    bool IsImmuneToMechanic(Unit const* unit, Mechanics mechanic)
+    {
+        auto const& immune = unit->m_spellImmune[IMMUNITY_MECHANIC];
+        return immune.count(mechanic) > 0 || (mechanic == MECHANIC_FEAR && immune.count(MECHANIC_HORROR) > 0);
+    }
+
     int32 SlotOf(SeatView const& view, Unit const* unit)
     {
         if (!unit)

@@ -23,8 +23,8 @@
 
 namespace Animus::Curriculum
 {
-    /// Several enemies at once: PACK_SLOTS enemy slots and the class's tactical spells (interrupts, stuns, crowd
-    /// control, taunts). Actions: select an enemy slot, cast a tactical spell at the target.
+    /// Several enemies at once: PACK_SLOTS enemy slots. Actions: select an enemy slot. (The tactical spells --
+    /// interrupts, stuns, crowd control, taunts -- are core actions, cast at the selected enemy.)
     class PackBlock final : public Block
     {
     public:
@@ -34,7 +34,7 @@ namespace Animus::Curriculum
             OBS_IN_COMBAT               = 1,    // enemies in combat / PACK_SLOTS
             OBS_GLOBAL_COUNT            = 2
 
-            // Then PACK_SLOTS enemy slots of SLOT_FEATURES, then per tactical spell: known, cooldown.
+            // Then PACK_SLOTS enemy slots of SLOT_FEATURES.
         };
 
         enum SlotFeature : uint32
@@ -57,9 +57,6 @@ namespace Animus::Curriculum
             SLOT_IN_LINE_OF_SIGHT       = 15,   // the bot can see it past the terrain and buildings
             SLOT_FEATURES
         };
-
-        /// Actions: select slot 0..PACK_SLOTS-1, then one per tactical spell.
-        static constexpr uint32 ACTION_TACTICAL_FIRST = PACK_SLOTS;
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Pack; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;

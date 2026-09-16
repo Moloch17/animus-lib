@@ -41,15 +41,13 @@ namespace
 
 Animus::Curriculum::BlockSize Animus::Curriculum::PackBlock::Size(Layout const& layout) const
 {
-    uint32 const tactical = uint32(layout.Catalog().Tactical().size());
-    return { OBS_GLOBAL_COUNT + PACK_SLOTS * SLOT_FEATURES + tactical * 2, PACK_SLOTS + tactical };
+    return { OBS_GLOBAL_COUNT + PACK_SLOTS * SLOT_FEATURES, PACK_SLOTS };
 }
 
-void Animus::Curriculum::PackBlock::DescribeManifest(Layout const& layout, boost::json::object& block) const
+void Animus::Curriculum::PackBlock::DescribeManifest(Layout const& /*layout*/, boost::json::object& block) const
 {
     block["slots"] = PACK_SLOTS;
     block["slot_features"] = uint32(SLOT_FEATURES);
-    block["tactical"] = SpellList(layout.Catalog().Tactical());
 }
 
 void Animus::Curriculum::PackBlock::Observe(SeatView const& view, float* obs, uint8* mask) const
@@ -92,30 +90,15 @@ void Animus::Curriculum::PackBlock::Observe(SeatView const& view, float* obs, ui
     obs[OBS_ALIVE] = float(alive) / float(PACK_SLOTS);
     obs[OBS_IN_COMBAT] = float(inCombat) / float(PACK_SLOTS);
 
-    std::vector<ActionCatalog::Action> const& tactical = view.L->Catalog().Tactical();
-    Encoding::WriteKnownCooldowns(bot, tactical, obs + OBS_GLOBAL_COUNT + PACK_SLOTS * SLOT_FEATURES);
     if (!mask)
         return;
 
     for (uint32 slot = 0; slot < PACK_SLOTS; ++slot)
         mask[slot] = IsSlotAllowed(view, slot) ? 1 : 0;
-
-    for (uint32 i = 0; i < tactical.size(); ++i)
-        mask[ACTION_TACTICAL_FIRST + i] = view.Target && Encoding::IsSpellActionAllowed(view, view.Target, tactical[i])
-            ? 1 : 0;
 }
 
-void Animus::Curriculum::PackBlock::Apply(SeatView& view, uint32 local, SeatActionResult& result) const
+void Animus::Curriculum::PackBlock::Apply(SeatView& view, uint32 local, SeatActionResult& /*result*/) const
 {
-    if (local >= ACTION_TACTICAL_FIRST)
-    {
-        std::vector<ActionCatalog::Action> const& tactical = view.L->Catalog().Tactical();
-        uint32 const index = local - ACTION_TACTICAL_FIRST;
-        if (view.Target && index < tactical.size())
-            Encoding::ApplySpellAction(view, view.Target, tactical[index], result);
-        return;
-    }
-
     if (IsSlotAllowed(view, local))
         Encoding::SelectEnemy(view, local);
 }

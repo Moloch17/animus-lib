@@ -101,7 +101,12 @@ namespace Animus::Curriculum
             STATE_ENEMY_IN_COMBAT       = 8,
             STATE_ENEMY_ON_OWNER        = 9,    // its victim is the owner
             STATE_ENEMY_ON_SEAT_FIRST   = 10,   // one-hot: its victim is seat s (MAX_SEATS columns)
-            STATE_ENEMY_FEATURES        = 10 + MAX_SEATS
+            STATE_ENEMY_MAX_HEALTH      = 10 + MAX_SEATS,   // its max health / seat 0's / 4, clamped
+            STATE_ENEMY_DAMAGE_MODIFIER = 11 + MAX_SEATS,   // / 2
+            STATE_ENEMY_ARMOR           = 12 + MAX_SEATS,   // share of seat 0's physical hits its armor takes off
+            STATE_ENEMY_RUN_SPEED       = 13 + MAX_SEATS,   // / 2
+            STATE_ENEMY_TYPE_FIRST      = 14 + MAX_SEATS,   // one-hot over Encoding::OPPONENT_TYPES (7)
+            STATE_ENEMY_FEATURES        = 21 + MAX_SEATS
         };
 
         StageScenario(StageSettings const& settings, StageDefinition const& stage);

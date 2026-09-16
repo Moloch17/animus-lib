@@ -56,7 +56,9 @@ namespace
             .Extends = "",
             .Summary = "a same-level creature out of aggro range: close in and kill it fast, taking little damage",
             .Blocks = { Core, Duel, Pet },
-            .Arenas = { { .Name = "duel", .Against = Opposition::Creature } },
+            // 90 s: running out of time is a lost fight (Duel.Timeout), and a healer or tank against a creature with
+            // twice the usual health needs half a minute to kill it after a few seconds of closing in.
+            .Arenas = { { .Name = "duel", .Against = Opposition::Creature, .EpisodeSeconds = 90 } },
         });
 
         stages.push_back({

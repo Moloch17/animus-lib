@@ -217,6 +217,14 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
     obs[OBS_SHAPESHIFTED] = Encoding::CancellableForm(bot) ? 1.0f : 0.0f;
     obs[OBS_COMBAT_TIME] = view.CombatTime;
 
+    obs[OBS_BOT_STUNNED] = bot->HasUnitState(UNIT_STATE_STUNNED) ? 1.0f : 0.0f;
+    obs[OBS_BOT_FEARED] = bot->HasAuraType(SPELL_AURA_MOD_FEAR) || bot->HasAuraType(SPELL_AURA_MOD_CONFUSE)
+        ? 1.0f : 0.0f;
+    obs[OBS_BOT_ROOTED] = bot->HasAuraType(SPELL_AURA_MOD_ROOT) ? 1.0f : 0.0f;
+    obs[OBS_BOT_SILENCED] = bot->HasAuraType(SPELL_AURA_MOD_SILENCE) || bot->HasAuraType(SPELL_AURA_MOD_PACIFY_SILENCE)
+        ? 1.0f : 0.0f;
+    obs[OBS_BOT_SNARED] = bot->HasAuraType(SPELL_AURA_MOD_DECREASE_SPEED) ? 1.0f : 0.0f;
+
     // What it carries, with or without a target.
     BattleSupplies const& supplies = view.Supplies;
     auto const carried = [bot](uint32 entry, float full)
@@ -299,6 +307,21 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
             obs[OBS_PET_HEALTH] = pet->GetHealthPct() / 100.0f;
             obs[OBS_PET_ATTACKING] = pet->GetVictim() == target ? 1.0f : 0.0f;
         }
+
+        Encoding::WriteOpponentType(target, obs + OBS_TARGET_TYPE_FIRST);
+        obs[OBS_TARGET_MAX_HEALTH] = std::min(1.0f,
+            float(target->GetMaxHealth()) / float(std::max<uint32>(1, bot->GetMaxHealth())) / 4.0f);
+        obs[OBS_TARGET_DAMAGE_MODIFIER] = Encoding::DamageModifier(target) / 2.0f;
+        obs[OBS_TARGET_ARMOR] = Encoding::ArmorReduction(target, bot->GetLevel());
+        obs[OBS_TARGET_RUN_SPEED] = target->GetSpeedRate(MOVE_RUN) / 2.0f;
+        obs[OBS_TARGET_LEVEL_DIFFERENCE] = std::clamp((float(target->GetLevel()) - float(bot->GetLevel())) / 5.0f,
+            -1.0f, 1.0f);
+        for (uint32 i = 0; i < Encoding::OBSERVED_SCHOOLS.size(); ++i)
+            obs[OBS_TARGET_IMMUNE_SCHOOL_FIRST + i] = Encoding::IsImmuneToSchool(target, Encoding::OBSERVED_SCHOOLS[i])
+                ? 1.0f : 0.0f;
+        for (uint32 i = 0; i < Encoding::OBSERVED_MECHANICS.size(); ++i)
+            obs[OBS_TARGET_IMMUNE_MECHANIC_FIRST + i] =
+                Encoding::IsImmuneToMechanic(target, Encoding::OBSERVED_MECHANICS[i]) ? 1.0f : 0.0f;
     }
 
     uint32 const actions = view.L->Slice(BlockId::Duel).ActionCount;

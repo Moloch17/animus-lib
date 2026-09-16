@@ -23,8 +23,8 @@
 
 namespace Animus::Curriculum
 {
-    /// Lasting through many fights: pull timing, eating and drinking, what food and drink is left, and the class's
-    /// sustain spells (heals, absorbs, friendly dispels). Actions: eat, drink, cast a sustain spell. A layout with this
+    /// Lasting through many fights: pull timing, eating and drinking, and what food and drink is left. Actions: eat,
+    /// drink. (The class's sustain spells -- heals, absorbs, friendly dispels -- are core actions.) A layout with this
     /// block also acts between pulls, without a target.
     class GauntletBlock final : public Block
     {
@@ -41,15 +41,13 @@ namespace Animus::Curriculum
             OBS_FOOD_LEFT               = 7,    // / CONSUMABLE_COUNT
             OBS_DRINK_LEFT              = 8,
             OBS_GLOBAL_COUNT            = 9
-
-            // Then per sustain spell: known, cooldown.
         };
 
         enum Action : uint32
         {
             ACTION_EAT                  = 0,
             ACTION_DRINK                = 1,
-            ACTION_SUSTAIN_FIRST        = 2
+            ACTION_COUNT                = 2     // the sustain spells are core actions, cast on the bot itself
         };
 
         [[nodiscard]] BlockId Id() const override { return BlockId::Gauntlet; }

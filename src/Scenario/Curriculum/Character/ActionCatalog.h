@@ -31,8 +31,9 @@ namespace Animus::Curriculum
     class ClassKit;
     class TalentBuilder;
 
-    /// The fixed action space of one class: every combat spell any of its races can know by level 80
-    /// (trainer spells, starting spells, racials, active talents), plus trinket uses.
+    /// The fixed action space of one class: every spell of its own kit any of its races can know by level 80
+    /// (trainer spells, starting spells, racials, active talents) -- combat spells, then trinket uses, then its
+    /// tactical spells (crowd control, interrupts) and its sustain spells (heals, shields) cast on itself.
     ///
     /// A spell action stands for a whole rank chain and casts the highest rank the bot knows. Actions
     /// the current bot cannot use (other race, level too low, talent not taken, on cooldown, wrong
@@ -49,6 +50,15 @@ namespace Animus::Curriculum
             Soulstone,          // warlocks: use the soulstone in the bags on a friendly player
         };
 
+        /// Which of the kit's lists a spell action came from.
+        enum class Group : uint8
+        {
+            None,               // not a spell, or a revive
+            Combat,
+            Tactical,
+            Sustain,
+        };
+
         struct Action
         {
             Kind Type = Kind::Noop;
@@ -59,18 +69,21 @@ namespace Animus::Curriculum
             /// Its own position in the list it belongs to, so a per-seat table can be keyed by action. Filled
             /// after the lists are built; the brace initialisers above it are positional.
             uint32 Index = 0;
+            Group From = Group::None;
         };
 
         ActionCatalog(uint8 playerClass, ClassKit const& kit, TalentBuilder const& talents);
 
+        /// The core block's actions: no-op, cancel-queued, combat spells, trinkets, tactical spells, sustain spells.
+        /// A player fights with the whole kit, from the first stage on: a healer heals itself and a mage polymorphs.
         [[nodiscard]] std::vector<Action> const& Actions() const { return _actions; }
 
         /// Interrupts, stuns, silences, fears, roots, polymorphs, knockbacks, taunts and offensive dispels
-        /// that are not already combat actions. Used from the pack stage on.
+        /// that are not already combat actions (also in Actions()).
         [[nodiscard]] std::vector<Action> const& Tactical() const { return _tactical; }
 
         /// Heals, heal-over-time, absorbs and friendly dispels that are not already combat or tactical
-        /// actions. Used from the gauntlet stage on.
+        /// actions (also in Actions(), cast on the bot itself; companion and party blocks cast them on allies).
         [[nodiscard]] std::vector<Action> const& Sustain() const { return _sustain; }
 
         /// Resurrection spells that take a dead friendly player as their target (Resurrection, Redemption, Ancestral

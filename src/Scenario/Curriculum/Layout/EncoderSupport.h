@@ -21,9 +21,11 @@
 
 #include "ActionCatalog.h"
 #include "ObjectGuid.h"
+#include "SharedDefines.h"
 #include "SeatView.h"
 #include "Spell.h"
 #include "Unit.h"
+#include <array>
 
 class Item;
 class Player;
@@ -99,6 +101,33 @@ namespace Animus::Curriculum::Encoding
     [[nodiscard]] SpellInfo const* CancellableForm(Player const* bot);
 
     [[nodiscard]] bool IsCrowdControlled(Unit const* unit);
+
+    /// What kind of opponent a unit is, for the duel block and the critic state.
+    ///
+    /// The fair opponent creature types, one-hot in this order; a player counts as humanoid.
+    constexpr std::array<uint32, 7> OPPONENT_TYPES = { CREATURE_TYPE_BEAST, CREATURE_TYPE_DRAGONKIN,
+        CREATURE_TYPE_DEMON, CREATURE_TYPE_ELEMENTAL, CREATURE_TYPE_GIANT, CREATURE_TYPE_UNDEAD,
+        CREATURE_TYPE_HUMANOID };
+    /// The magic schools whose immunity is observed, in this order.
+    constexpr std::array<SpellSchools, 6> OBSERVED_SCHOOLS = { SPELL_SCHOOL_HOLY, SPELL_SCHOOL_FIRE,
+        SPELL_SCHOOL_NATURE, SPELL_SCHOOL_FROST, SPELL_SCHOOL_SHADOW, SPELL_SCHOOL_ARCANE };
+    /// The crowd control mechanics whose immunity is observed, in this order (fear covers horror too).
+    constexpr std::array<Mechanics, 6> OBSERVED_MECHANICS = { MECHANIC_FEAR, MECHANIC_STUN, MECHANIC_ROOT,
+        MECHANIC_SNARE, MECHANIC_SILENCE, MECHANIC_POLYMORPH };
+
+    /// Write the one-hot of OPPONENT_TYPES for `unit` to out[0..6] (nothing for another type).
+    void WriteOpponentType(Unit const* unit, float* out);
+
+    /// The creature's damage multiplier from its template (1 for a player).
+    [[nodiscard]] float DamageModifier(Unit const* unit);
+
+    /// The share of a physical hit from an attacker of `attackerLevel` that `unit`'s armor takes off (0-0.75), as the
+    /// core computes it.
+    [[nodiscard]] float ArmorReduction(Unit const* unit, uint8 attackerLevel);
+
+    /// Whether `unit` is immune to `school` damage, and to `mechanic`.
+    [[nodiscard]] bool IsImmuneToSchool(Unit const* unit, SpellSchools school);
+    [[nodiscard]] bool IsImmuneToMechanic(Unit const* unit, Mechanics mechanic);
 
     /// The enemy slot of `unit`, or -1.
     [[nodiscard]] int32 SlotOf(SeatView const& view, Unit const* unit);

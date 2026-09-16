@@ -114,6 +114,8 @@ void Animus::Curriculum::CoreBlock::DescribeManifest(Layout const& layout, boost
                 entry["kind"] = "spell";
                 entry["first_rank"] = action.FirstRank;
                 entry["next_swing"] = action.NextSwing;
+                entry["group"] = action.From == ActionCatalog::Group::Tactical ? "tactical"
+                    : action.From == ActionCatalog::Group::Sustain ? "sustain" : "combat";
                 break;
         }
     }
@@ -270,5 +272,6 @@ void Animus::Curriculum::CoreBlock::Apply(SeatView& view, uint32 local, SeatActi
             break;
     }
 
-    Encoding::ApplySpellAction(view, view.Target, def, result);
+    if (Encoding::ApplySpellAction(view, view.Target, def, result) && def.From == ActionCatalog::Group::Sustain)
+        ++result.SustainCasts;
 }
