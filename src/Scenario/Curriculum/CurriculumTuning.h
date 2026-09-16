@@ -105,12 +105,10 @@ namespace Animus::Curriculum
         struct CastingTuning
         {
             float TimeWasted = 0.03f;           // per second spent on a cast that did not finish
-            /// Per second of cast time of a cast that finished, in combat. 0: paying by the second for finishing
-            /// pays for a long useless cast as readily as the right one, and makes cancelling cost both the
-            /// seconds already spent and the seconds forgone -- a bias against reacting. What a cast is worth
-            /// is what it does, which damage, healing and the kill already pay for. TimeWasted still charges
-            /// for the failure this was meant to balance.
-            float TimeCompleted = 0.0f;
+            /// Per second of cast time of a cast that finished, in combat (not out of it, so casting long spells at
+            /// nothing earns nothing). It pays a long useless cast as readily as the right one, so keep it small next
+            /// to what a cast does, which damage, healing and the kill already pay for.
+            float TimeCompleted = 0.03f;
             /// Per cast the bot cut short itself, whatever it had spent on it. TimeWasted is proportional to the
             /// seconds lost, so a cast stopped on the decision after it began costs almost nothing: under a
             /// deterministic policy that leaves start-cast / stop-cast a free loop to sit in for a whole episode
@@ -164,7 +162,7 @@ namespace Animus::Curriculum
             float Clear = 2.0f;
             float FastClear = 3.0f;             // pack: times the episode fraction left after engaging
             float FastPull = 2.0f;              // gauntlet: times 1 - time since the pull engaged / 60 s
-            float HealthKept = 1.0f;            // as the duel's: damage taken is already charged as it happens
+            float HealthKept = 2.0f;            // times the health kept through the pull or pack
             float PackDeath = 3.0f;
             float GauntletDeath = 5.0f;
             float OwnerClearScale = 2.0f;       // owner stages: kills and clears count this many times
