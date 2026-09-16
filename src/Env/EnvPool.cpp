@@ -26,6 +26,7 @@
 #include "SpellInfo.h"
 #include "StageSettings.h"
 #include "StringFormat.h"
+#include <chrono>
 #include "Unit.h"
 #include <algorithm>
 
@@ -133,15 +134,33 @@ void Animus::EnvPool::ResetAll()
     std::fill(Terminated.begin(), Terminated.end(), 0);
 }
 
+namespace
+{
+    /// Nanoseconds since `from`, and `from` moved to now: the next section starts where this one ended.
+    uint64 Since(std::chrono::steady_clock::time_point& from)
+    {
+        auto const now = std::chrono::steady_clock::now();
+        uint64 const elapsed = uint64(std::chrono::duration_cast<std::chrono::nanoseconds>(now - from).count());
+        from = now;
+        return elapsed;
+    }
+}
+
 void Animus::EnvPool::Collect()
 {
     uint32 const agentsPerEnv = _spec.AgentsPerEnv;
+
+    // Where this decision's time goes, for the host's report. The clock is read a handful of times per env, not
+    // per agent or per action, so the measurement does not pay for itself.
+    _collect = CollectTiming();
+    auto mark = std::chrono::steady_clock::now();
 
     for (Env& env : _envs)
     {
         uint32 const e = env.Index;
 
         _scenario.Reward(env, &Rewards[e * agentsPerEnv]);
+        _collect.RewardNs += Since(mark);
 
         for (uint32 agent = 0; agent < agentsPerEnv; ++agent)
         {
@@ -165,12 +184,18 @@ void Animus::EnvPool::Collect()
 
             ++env.EpisodesCompleted;
             ReportEpisode(e);
+            _collect.FinalObserveNs += Since(mark);
+
             ResetEnv(env);
+            ++_collect.Resets;
+            _collect.ResetNs += Since(mark);
         }
 
         _scenario.Observe(env, &Obs[e * agentsPerEnv * _spec.ObsDim], &State[e * _spec.StateDim],
             &Mask[e * agentsPerEnv * _spec.NumActions]);
         DescribeAgents(env);
+        ++_collect.Observes;
+        _collect.ObserveNs += Since(mark);
     }
 }
 
@@ -241,8 +266,12 @@ void Animus::EnvPool::SetEvaluation(bool enabled, uint32 seedBase, uint32 episod
 
 void Animus::EnvPool::ApplyActions()
 {
+    auto mark = std::chrono::steady_clock::now();
+
     for (Env& env : _envs)
         _scenario.ApplyActions(env, &Actions[env.Index * _spec.AgentsPerEnv]);
+
+    _collect.ApplyNs = Since(mark);
 }
 
 void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uint32 damage, DamageEffectType type)

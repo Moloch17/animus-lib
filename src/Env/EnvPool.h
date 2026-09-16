@@ -104,6 +104,25 @@ namespace Animus
         /// Episodes finished by every env since Setup.
         [[nodiscard]] uint64 CompletedEpisodes() const;
 
+        /// Where a decision's pool time went, for the host's report: the parts of Collect and ApplyActions that
+        /// can be worked on separately. Filled every decision, so a host may read it after ApplyActions.
+        ///
+        /// ObserveNs covers the observation and the mask of the running episodes; FinalObserveNs the ended ones'
+        /// last observation, which is the same work without the mask, so comparing the two per call is the
+        /// cheapest read on what mask building costs.
+        struct CollectTiming
+        {
+            uint64 RewardNs = 0;
+            uint64 ObserveNs = 0;           // ... and the step stats roll-up and terminal check before it
+            uint64 FinalObserveNs = 0;      // ... and the ended episodes' info
+            uint64 ResetNs = 0;             // building the next episode: characters, gear, the encounter
+            uint64 ApplyNs = 0;             // ApplyActions, which is a decision's other half
+            uint32 Observes = 0;            // envs observed (one per env per decision)
+            uint32 Resets = 0;              // episodes that ended and were rebuilt
+        };
+
+        [[nodiscard]] CollectTiming const& LastCollect() const { return _collect; }
+
         /// Mean episode info of the last StageSettings::ReportEpisodes finished episodes, by column name, and how many
         /// episodes that was (0 before the first batch).
         [[nodiscard]] std::vector<std::pair<std::string, double>> const& LastEpisodeMeans() const
@@ -168,6 +187,8 @@ namespace Animus
         std::string _evalBaseline;
         bool _evalOpponentsOnly = false;
         std::vector<uint32> _envSeed;           // per env: seed index of the running episode
+
+        CollectTiming _collect;
 
         std::vector<double> _reportInfoSum;
         uint32 _reportedEpisodes = 0;
