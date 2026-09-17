@@ -220,6 +220,12 @@ namespace Animus::Curriculum
             float PackHealthKept = 0.5f;        // pack: times the health kept through the pack
             float PackDeath = 10.0f;
             float Timeout = 10.0f;              // pack: the clock ran out with the pack and the seat both alive
+            /// A timeout charged only at the end is 150 s away when the kiting starts: the discount leaves about a
+            /// fifth of it, against a whole death now, so running out the clock looked safe. A fight engaged longer
+            /// than OvertimeGraceMs is charged as it drags on, and a death in overtime is charged the overtime left,
+            /// so dying never ends it more cheaply than the timeout would.
+            float Overtime = 0.1f;              // pack: per second of a fight past OvertimeGraceMs since it was engaged
+            uint32 OvertimeGraceMs = 60000;
             float Stall = 0.05f;                // pack: per second not engaged once StallGraceMs are gone
             uint32 StallGraceMs = 15000;
             float Spacing = 0.03f;              // pack: per second a ranged spec is hit in melee reach
@@ -432,6 +438,8 @@ namespace Animus::Curriculum
             f("Pulls.PackHealthKept", tuning.Pulls.PackHealthKept);
             f("Pulls.PackDeath", tuning.Pulls.PackDeath);
             f("Pulls.Timeout", tuning.Pulls.Timeout);
+            f("Pulls.Overtime", tuning.Pulls.Overtime);
+            f("Pulls.OvertimeGraceMs", tuning.Pulls.OvertimeGraceMs);
             f("Pulls.Stall", tuning.Pulls.Stall);
             f("Pulls.StallGraceMs", tuning.Pulls.StallGraceMs);
             f("Pulls.Spacing", tuning.Pulls.Spacing);

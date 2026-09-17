@@ -580,18 +580,29 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
         tally.DeathMs = env.EpisodeElapsedMs;
         ++tally.Deaths;
         ledger.Add(RewardTerm::Death, -(Gauntlet(env) ? tuning.GauntletDeath : tuning.PackDeath));
+
+        // A single pack lost in overtime: the rest of the overtime too, which timing out would have cost.
+        if (SinglePack(env) && !tally.Killed && pulls.PullEngaged
+            && env.EpisodeElapsedMs > pulls.PullEngageMs + tuning.OvertimeGraceMs
+            && env.EpisodeLengthMs > env.EpisodeElapsedMs)
+            ledger.Add(RewardTerm::Timeout,
+                -tuning.Overtime * float(env.EpisodeLengthMs - env.EpisodeElapsedMs) / 1000.0f);
     }
 
     if (!SinglePack(env))
         return;
 
-    // A single pack is won or lost, as the duel is. Standing off is charged as it happens once the grace is gone, a
-    // ranged spec is charged for being hit in melee reach, and running out the clock is a lost fight.
+    // A single pack is won or lost, as the duel is. Standing off is charged as it happens once the grace is gone, so is
+    // a fight dragged past its own grace (under the timeout term: it is the timeout arriving), a ranged spec is charged
+    // for being hit in melee reach, and running out the clock is a lost fight.
     if (bot->IsAlive() && !tally.Killed)
     {
         float const seconds = float(_scenario.DecisionMs()) / 1000.0f;
         if (!pulls.PullEngaged && env.EpisodeElapsedMs > tuning.StallGraceMs)
             ledger.Add(RewardTerm::Stall, -tuning.Stall * seconds);
+
+        if (pulls.PullEngaged && env.EpisodeElapsedMs > pulls.PullEngageMs + tuning.OvertimeGraceMs)
+            ledger.Add(RewardTerm::Timeout, -tuning.Overtime * seconds);
 
         if (seat.L && seat.L->Profile->Specs[seat.Spec].Range != RangeBand::Melee)
         {
