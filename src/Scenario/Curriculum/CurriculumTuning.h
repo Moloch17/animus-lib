@@ -311,6 +311,12 @@ namespace Animus::Curriculum
             uint32 ArriveFloorMs = 10000;
             uint32 NextPullShrinkMs = 1000;
             uint32 NextPullFloorMs = 4000;
+            /// Gauntlets (stages 3-5, 8): what the per-hit terms -- damage dealt, damage taken, kills, approach --
+            /// are multiplied by. A plan pays at the end of a pull or an episode (the clear, surviving, readiness,
+            /// control), and dense terms paid every decision drown those out: a seat that opens on the nearest enemy
+            /// and never stops earns most of what a careful one does, minutes sooner. Below 1 the outcome is what the
+            /// stage is about; 1 leaves the single pack's balance alone.
+            float GauntletDenseScale = 0.5f;
             float OwnerClearScale = 2.0f;       // owner stages: kills and clears count this many times
             /// Owner arenas keep what the solo gauntlet teaches: readiness paid when a pull is engaged (the lower of
             /// health and mana), crowd control that keeps an add out of the fight (per enemy-second, capped per pull),
@@ -571,6 +577,7 @@ namespace Animus::Curriculum
             f("Pulls.ArriveFloorMs", tuning.Pulls.ArriveFloorMs);
             f("Pulls.NextPullShrinkMs", tuning.Pulls.NextPullShrinkMs);
             f("Pulls.NextPullFloorMs", tuning.Pulls.NextPullFloorMs);
+            f("Pulls.GauntletDenseScale", tuning.Pulls.GauntletDenseScale);
             f("Pulls.OwnerClearScale", tuning.Pulls.OwnerClearScale);
             f("Pulls.OwnerReadiness", tuning.Pulls.OwnerReadiness);
             f("Pulls.OwnerControl", tuning.Pulls.OwnerControl);

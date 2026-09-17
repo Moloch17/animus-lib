@@ -203,13 +203,21 @@ namespace Animus::Curriculum
         /// Whether the env's episode is pull after pull (else a single pack).
         [[nodiscard]] bool Gauntlet(Env const& env) const
         {
-            return _scenario.Arena(env).Schedule == PullSchedule::Gauntlet;
+            PullSchedule const schedule = _scenario.Arena(env).Schedule;
+            return schedule == PullSchedule::Gauntlet || schedule == PullSchedule::Sequence;
         }
 
         /// Pull after pull with no owner: won by lasting (PullTuning::SoloGauntlet*).
         [[nodiscard]] bool SoloGauntlet(Env const& env) const
         {
             return Gauntlet(env) && !_scenario.Arena(env).Owner;
+        }
+
+        /// A known run of pulls in a fixed order (PullSchedule::Sequence): the same fights, in the same order, every
+        /// episode, so what is left to learn is the plan -- what to spend early, what to save for the end.
+        [[nodiscard]] bool Sequence(Env const& env) const
+        {
+            return _scenario.Arena(env).Schedule == PullSchedule::Sequence;
         }
 
         /// A solo gauntlet's per-decision terms: its survival counted as the kill, stall, spacing and control.

@@ -68,6 +68,21 @@ namespace
         { 2, 1, 1, 1 },     // 4 with an elite, a level above
     }};
 
+    /// A planned run's pulls (PullSchedule::Sequence), in order: the same fights every episode, ending on a pack
+    /// that cannot be walked into without something saved for it. A seat that spends everything on the first pull
+    /// arrives at the last one with nothing, which is the whole point of the stage.
+    constexpr std::array<PackRung, 8> SEQUENCE_PULLS =
+    {{
+        { 1, 1, 0, 0 },     // 2: an opener
+        { 1, 2, 0, 0 },     // 3
+        { 2, 2, 0, 0 },     // 4, two of them casters
+        { 1, 1, 0, 0 },     // 2: a breather, if it is used as one
+        { 1, 3, 0, 0 },     // 4
+        { 1, 1, 1, 0 },     // 3 with an elite
+        { 2, 1, 1, 1 },     // 4 with an elite, a level above
+        { 1, 1, 1, 2 },     // the last stand: an elite pack two levels above
+    }};
+
     /// The pull's creatures leave; enemy players in the slots (ambushers) stay.
     void Despawn(Animus::Env& env)
     {
@@ -129,7 +144,7 @@ bool Animus::Curriculum::PullsEncounter::AnyGauntlet() const
 {
     return _scenario.Stage().AnyArena([](ArenaDefinition const& arena)
     {
-        return arena.Schedule == PullSchedule::Gauntlet;
+        return arena.Schedule == PullSchedule::Gauntlet || arena.Schedule == PullSchedule::Sequence;
     });
 }
 
@@ -324,6 +339,24 @@ bool Animus::Curriculum::PullsEncounter::SpawnPull(Env& env, Map* map)
         }
     }
 
+    // A planned run: the same pull for the same position, every episode.
+    if (entries.empty() && Sequence(env))
+    {
+        PackRung const& planned = SEQUENCE_PULLS[std::min<std::size_t>(pulls.PullsCleared, SEQUENCE_PULLS.size() - 1)];
+        level = uint8(std::min<uint32>(HIGHEST_OPPONENT_LEVEL, botLevel + planned.Levels));
+        uint8 const poolLevel = uint8(std::min<uint32>(level, DEFAULT_MAX_LEVEL));
+        pulls.EliteOrHigher = planned.Elites || planned.Levels;
+        for (uint32 i = 0; i < planned.Casters; ++i)
+            if (uint32 const entry = pool.RandomCaster(poolLevel))
+                entries.push_back(entry);
+        for (uint32 i = 0; i < planned.Elites; ++i)
+            if (uint32 const entry = pool.RandomElite(poolLevel))
+                entries.push_back(entry);
+        for (uint32 i = 0; i < planned.Others; ++i)
+            if (uint32 const entry = pool.RandomPackMember(poolLevel))
+                entries.push_back(entry);
+    }
+
     // A single pack is its class/role's rung on the ladder.
     if (entries.empty() && SinglePack(env))
     {
@@ -476,6 +509,10 @@ void Animus::Curriculum::PullsEncounter::Update(Env& env)
         SendPull(env);
 
     if (!Gauntlet(env) || HasCreatures(env) || env.EpisodeElapsedMs < pulls.NextPullMs)
+        return;
+
+    // A planned run ends when its last pull has been cleared: nothing more spawns.
+    if (Sequence(env) && pulls.PullsCleared >= SEQUENCE_PULLS.size())
         return;
 
     // The next pull once the break is over, if anyone is left to fight it.
@@ -783,17 +820,21 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
         }
     }
 
+    // A gauntlet is about lasting through many fights, so what is paid every decision counts for less there: the
+    // clear, surviving, readiness and control are what a plan earns (Pulls.GauntletDenseScale).
+    float const dense = Gauntlet(env) ? tuning.GauntletDenseScale : 1.0f;
+
     if (pullHealth > 0.0f)
-        ledger.Add(RewardTerm::DamageDealt, tuning.DamageDealt * float(step.Damage) / pullHealth);
+        ledger.Add(RewardTerm::DamageDealt, dense * tuning.DamageDealt * float(step.Damage) / pullHealth);
 
     tally.DamageTaken += step.DamageTaken;
     pull.PullDamageTaken += step.DamageTaken;
     ledger.Add(RewardTerm::DamageTaken,
-        -(Gauntlet(env) ? tuning.GauntletDamageTaken : tuning.DamageTaken) * seat.LastStepDamageTaken);
+        -dense * (Gauntlet(env) ? tuning.GauntletDamageTaken : tuning.DamageTaken) * seat.LastStepDamageTaken);
 
     CombatReward::Casting(bot, step, tally, _scenario.Tuning().Casting, ledger);
     CombatReward::Approach(bot, nearest && bot->IsAlive() ? nearest : nullptr,
-        CombatReward::DesiredRange(seat, _scenario.Tuning().Duel), tuning.Approach, tally, ledger);
+        CombatReward::DesiredRange(seat, _scenario.Tuning().Duel), dense * tuning.Approach, tally, ledger);
 
     CombatReward::Stealth(tally, tuning.StealthOpener, tuning.StealthUtility, ledger);
 
@@ -828,7 +869,7 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
     // learned to fight less to avoid the penalties.
     float const clearScale = _scenario.Arena(env).Owner ? tuning.OwnerClearScale : 1.0f;
     if (pulls.NewKills)
-        ledger.Add(RewardTerm::Kill, tuning.Kill * clearScale * float(pulls.NewKills));
+        ledger.Add(RewardTerm::Kill, dense * tuning.Kill * clearScale * float(pulls.NewKills));
 
     if (pulls.PullCleared)
     {
@@ -948,11 +989,19 @@ void Animus::Curriculum::PullsEncounter::GauntletAloneTerms(Env& env, SeatState&
     if (!bot->IsAlive())
         return;
 
+    // A planned run is won by clearing its last pull alive, whenever that happens.
+    if (Sequence(env) && !tally.Killed && !tally.Died && pulls.PullsCleared >= SEQUENCE_PULLS.size())
+    {
+        tally.Killed = true;
+        tally.KillTimeMs = env.EpisodeElapsedMs;
+    }
+
     // Lasting to the end with Pulls.SoloGauntletWinPulls cleared is the gauntlet's win: counted as the kill
     // (clean_kill is then a gauntlet endured). Lasting on fewer is the clock running out.
     if (!tally.Killed && !tally.Died && !tally.TimedOut && TimeIsUp(env))
     {
-        if (pulls.PullsCleared >= tuning.SoloGauntletWinPulls)
+        // A planned run is won by finishing it, not by lasting: its clock running out is a loss however far it got.
+        if (!Sequence(env) && pulls.PullsCleared >= tuning.SoloGauntletWinPulls)
         {
             tally.Killed = true;
             tally.KillTimeMs = env.EpisodeElapsedMs;
@@ -1172,6 +1221,8 @@ bool Animus::Curriculum::PullsEncounter::IsTerminal(Env const& env) const
         return false;
 
     bool const dead = _scenario.DeadForGood(env, 0);
+    if (Sequence(env))
+        return dead || _envs[env.Index].PullsCleared >= SEQUENCE_PULLS.size();
     if (Gauntlet(env))
         return dead;
 
