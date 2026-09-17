@@ -250,6 +250,21 @@ namespace Animus::Curriculum
             /// so dying never ends it more cheaply than the timeout would.
             float Overtime = 0.1f;              // pack: per second of a fight past OvertimeGraceMs since it was engaged
             uint32 OvertimeGraceMs = 60000;
+            /// Pack: crowd control priced as the damage it prevents, in the seat's own maximum healths, so it is in
+            /// the currency DamageTaken is already charged in and the two weights are comparable. The divisor is
+            /// *current* health, floored at ControlHealthFloor of the maximum: preventing a hit matters more the less
+            /// health there is to lose, which is what makes control a survival tool rather than a damage discount.
+            /// SinglePackControl 0 measures without paying -- control_prevented still reports -- so the weight can be
+            /// set from what a run actually saves instead of guessed, and turning it on is a config change.
+            float SinglePackControl = 0.0f;
+            float SinglePackControlMax = 1.0f;  // ... at most this per pull, a guard rather than a shaping knob
+            float ControlHealthFloor = 0.2f;
+            float ControlFallbackDps = 0.02f;   // maximum healths per second, for an enemy that never got to act
+            uint32 ControlRateMinMs = 3000;     // free-to-act time before an enemy's own measured rate is trusted
+            /// Pack: control time extends the overtime grace, up to this much, so holding an add is not charged as
+            /// dragging the fight out. 0 leaves the grace alone. Bounded on purpose: Overtime exists to stop kiting
+            /// the clock, and an unbounded pause would hand that back.
+            uint32 ControlGraceMaxMs = 0;
             float Stall = 0.05f;                // pack: per second not engaged once StallGraceMs are gone
             uint32 StallGraceMs = 15000;
             uint32 PreparationRefundMaxMs = 30000;  // pack: as the duel's
@@ -520,6 +535,12 @@ namespace Animus::Curriculum
             f("Pulls.Timeout", tuning.Pulls.Timeout);
             f("Pulls.Overtime", tuning.Pulls.Overtime);
             f("Pulls.OvertimeGraceMs", tuning.Pulls.OvertimeGraceMs);
+            f("Pulls.SinglePackControl", tuning.Pulls.SinglePackControl);
+            f("Pulls.SinglePackControlMax", tuning.Pulls.SinglePackControlMax);
+            f("Pulls.ControlHealthFloor", tuning.Pulls.ControlHealthFloor);
+            f("Pulls.ControlFallbackDps", tuning.Pulls.ControlFallbackDps);
+            f("Pulls.ControlRateMinMs", tuning.Pulls.ControlRateMinMs);
+            f("Pulls.ControlGraceMaxMs", tuning.Pulls.ControlGraceMaxMs);
             f("Pulls.Stall", tuning.Pulls.Stall);
             f("Pulls.StallGraceMs", tuning.Pulls.StallGraceMs);
             f("Pulls.PreparationRefundMaxMs", tuning.Pulls.PreparationRefundMaxMs);
