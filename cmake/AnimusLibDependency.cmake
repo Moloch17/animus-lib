@@ -1,19 +1,23 @@
 # animus-lib as a dependency of another AzerothCore module (mod-animus, mod-animus-forge).
 #
-# A dependent's <module>.cmake clones the library into modules/mod-animus-lib when it is missing, includes this file
-# and calls AnimusLibRequire(<dependent>). modules/CMakeLists.txt runs <module>.cmake files after the `modules` target
-# exists, in its scope, so this sees the configure's module list and each module's linkage (static, dynamic, disabled).
+# Each dependent bundles the library's source as a git subtree in <module>/animus-lib, so a module folder builds
+# offline against whatever core it is put in, with the library revision it was tested with. A dependent's
+# <module>.cmake includes this file (from modules/mod-animus-lib when that is present, else from its own bundle) and
+# calls AnimusLibRequire(<dependent> <bundle dir>). modules/CMakeLists.txt runs <module>.cmake files after the `modules`
+# target exists, in its scope, so this sees the configure's module list and each module's linkage (static, dynamic,
+# disabled). Exactly one copy of the library is built:
 #
-# - The library is a module of this configure: static builds need nothing more (every static module is in `modules`);
-#   a dynamic dependent links the library's own shared module, so the library must be dynamic too.
-# - The library was cloned during this configure: its sources and include directories are added to `modules` here
-#   (static dependents only), and the dependents' loaders run its scripts (Addmod_animus_libScripts is idempotent).
-#   The next configure finds it as a module like any other.
+# - modules/mod-animus-lib is a module of this configure (a development checkout): it is the library. Static builds
+#   need nothing more (every static module is in `modules`); a dynamic dependent links the library's own shared module,
+#   so the library must be dynamic too. The bundles are ignored.
+# - Otherwise the first static dependent to configure adds its bundle's sources and include directories to `modules`,
+#   and the others find them added. The dependents' loaders run the library's scripts (Addmod_animus_libScripts is
+#   idempotent). A dynamic dependent needs the library as its own module: copy a bundle to modules/mod-animus-lib.
 
 set(ANIMUS_LIB_MODULE "mod-animus-lib")
-set(ANIMUS_LIB_DIR "${CMAKE_SOURCE_DIR}/modules/${ANIMUS_LIB_MODULE}")
+set(ANIMUS_LIB_MODULE_DIR "${CMAKE_SOURCE_DIR}/modules/${ANIMUS_LIB_MODULE}")
 
-function(AnimusLibRequire dependent)
+function(AnimusLibRequire dependent bundleDir)
   ModuleNameToVariable(${dependent} dependentVariable)
   set(dependentLinkage "${${dependentVariable}}")
   if(NOT dependentLinkage MATCHES "static|dynamic")
@@ -30,7 +34,8 @@ function(AnimusLibRequire dependent)
 
     if(NOT libraryLinkage MATCHES "static|dynamic")
       message(FATAL_ERROR "${dependent} needs ${ANIMUS_LIB_MODULE}, which is disabled: set ${libraryVariable} to "
-        "${dependentLinkage} or disable ${dependent}")
+        "${dependentLinkage}, remove ${ANIMUS_LIB_MODULE_DIR} to build ${dependent}'s bundled copy, or disable "
+        "${dependent}")
     endif()
 
     if(NOT libraryLinkage STREQUAL dependentLinkage)
@@ -41,23 +46,35 @@ function(AnimusLibRequire dependent)
     if(dependentLinkage STREQUAL "dynamic")
       target_link_libraries(${dependentProject} PUBLIC ${libraryProject})
     endif()
+
+    get_property(announced GLOBAL PROPERTY ANIMUS_LIB_ANNOUNCED)
+    if(NOT announced)
+      set_property(GLOBAL PROPERTY ANIMUS_LIB_ANNOUNCED TRUE)
+      message(STATUS "  animus-lib: using the ${ANIMUS_LIB_MODULE} module; bundled copies are ignored")
+    endif()
     return()
   endif()
 
   if(dependentLinkage STREQUAL "dynamic")
-    message(FATAL_ERROR "${ANIMUS_LIB_MODULE} was cloned during this configure; run cmake again so the dynamic "
-      "${dependent} can link it")
+    message(FATAL_ERROR "${dependent} is built dynamic, which needs animus-lib as its own module: copy "
+      "${bundleDir} to ${ANIMUS_LIB_MODULE_DIR} and build it dynamic too")
   endif()
 
   get_property(alreadyAdded GLOBAL PROPERTY ANIMUS_LIB_ADDED_TO_MODULES)
   if(alreadyAdded)
     return()
   endif()
+
+  if(NOT EXISTS "${bundleDir}/src/animus_lib_loader.cpp")
+    message(FATAL_ERROR "${dependent}'s bundled animus-lib is missing (${bundleDir}/src); restore the module's "
+      "animus-lib directory")
+  endif()
+
   set_property(GLOBAL PROPERTY ANIMUS_LIB_ADDED_TO_MODULES TRUE)
 
-  CollectSourceFiles(${ANIMUS_LIB_DIR} librarySources)
-  CollectIncludeDirectories(${ANIMUS_LIB_DIR} libraryIncludes)
+  CollectSourceFiles("${bundleDir}/src" librarySources)
+  CollectIncludeDirectories("${bundleDir}/src" libraryIncludes)
   target_sources(modules PRIVATE ${librarySources})
   target_include_directories(modules PUBLIC ${libraryIncludes})
-  message(STATUS "  ${ANIMUS_LIB_MODULE} added to the static modules for ${dependent}")
+  message(STATUS "  animus-lib: built from ${bundleDir}")
 endfunction()

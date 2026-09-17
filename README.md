@@ -28,16 +28,17 @@ This page is the map.
 
 ## Getting it
 
-mod-animus and mod-animus-forge clone it when you configure and `modules/mod-animus-lib` is missing (from
-`ANIMUS_LIB_GIT_URL` at `ANIMUS_LIB_GIT_REF`, by default `https://github.com/Moloch17/animus-lib.git` at `master`).
-To clone it yourself:
+mod-animus and mod-animus-forge each bundle this library's source as a git subtree in `animus-lib/`, at the revision
+they were tested with, so a module folder builds offline with nothing else to fetch. When `modules/mod-animus-lib` is
+present (a development checkout of this repository) it is built instead and the bundled copies are ignored:
 
 ```
 git clone https://github.com/Moloch17/animus-lib.git modules/mod-animus-lib
 ```
 
-Build it the way you build the modules that need it: static (the default) or all dynamic.
-`cmake/AnimusLibDependency.cmake` holds the rules the dependents apply.
+Build it the way you build the modules that need it: static (the default) or all dynamic (a dynamic build needs this
+module; copy a bundle to `modules/mod-animus-lib`). `cmake/AnimusLibDependency.cmake` holds the rules the dependents
+apply. A dependent picks up a new revision with its `tools/update-animus-lib.sh`.
 
 ## Changing it
 
