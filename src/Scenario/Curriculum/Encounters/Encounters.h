@@ -20,6 +20,7 @@
 #define ANIMUS_LIB_CURRICULUM_ENCOUNTERS_H
 
 #include "BotSlot.h"
+#include "DifficultyLadder.h"
 #include "Encounter.h"
 #include "ObjectGuid.h"
 #include "RewardLedger.h"
@@ -87,7 +88,7 @@ namespace Animus::Curriculum
         [[nodiscard]] bool IsTerminal(Env const& env) const override;
 
         /// Class/role `layout`'s current training tier.
-        [[nodiscard]] uint32 Tier(uint16 layout) const;
+        [[nodiscard]] uint32 Tier(uint16 layout) const { return _ladder.Tier(layout); }
 
     private:
         struct EnvFight
@@ -99,21 +100,11 @@ namespace Animus::Curriculum
             bool Recorded = false;      // the outcome is in
         };
 
-        struct LayoutTier
-        {
-            uint32 Tier = 0;
-            uint32 Fights = 0;          // at this tier, since it was reached
-            uint32 Wins = 0;
-        };
-
         /// The episode's time limit is reached.
         [[nodiscard]] static bool TimeIsUp(Env const& env);
-        /// A fight at its class/role's tier ended: count it, and move the tier once a window is full.
-        void Record(EnvFight const& fight, bool won);
 
         std::vector<EnvFight> _envs;
-        mutable std::mutex _tiersLock;  // envs finish on map update threads
-        std::vector<LayoutTier> _tiers;
+        DifficultyLadder _ladder;
     };
 
     /// Packs of creatures (casters included, often linked): one pack, or the gauntlet's pull after pull with breaks
@@ -168,6 +159,10 @@ namespace Animus::Curriculum
             uint32 QuietSinceMs = 0;            // episode time the last pull ended
             uint32 NextPullMs = 0;              // spawn the next pull at this episode time
             bool EliteOrHigher = false;
+            uint32 Rung = 0;                    // single pack: its ladder rung ...
+            uint16 RungLayout = 0;              // ... for this class/role
+            bool RungCounts = false;            // ... a training pack at the class/role's own rung
+            bool RungRecorded = false;          // ... whose outcome is in
             uint32 Wipes = 0;                   // owner stages: pulls that killed everyone and were cleared away
             bool AwaitingRevive = false;        // owner stages: someone dead waits for a resurrection (Recover)
             std::array<SeatPull, MAX_SEATS> Seats;
@@ -182,12 +177,15 @@ namespace Animus::Curriculum
         [[nodiscard]] bool SinglePack(Env const& env) const;
         /// Whether any arena of the stage is: its supplies, episode info columns.
         [[nodiscard]] bool AnyGauntlet() const;
+        /// The single pack's top rung: Pulls.MaxTier, no higher than the ladder has.
+        [[nodiscard]] uint32 MaxRung() const;
         bool SpawnPull(Env& env, Map* map);
         /// The field is empty: schedule the next pull and restart the seats' target selection.
         void EndPull(Env& env, EnvPulls& pulls);
         void Recover(Env& env);
 
         std::vector<EnvPulls> _envs;
+        DifficultyLadder _ladder;
     };
 
     /// A scripted player of a random class and role near the seats' level, whom the seats fight for (companion and

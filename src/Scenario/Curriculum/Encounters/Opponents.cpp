@@ -134,9 +134,25 @@ Animus::Curriculum::Opponents::OpponentPool::OpponentPool()
         } while (result->NextRow());
     }
 
+    // Of those, the ones that cast something with a cast time: an interrupt can stop it.
+    std::unordered_set<uint32> castTimeSmart;
+    if (QueryResult result = WorldDatabase.Query("SELECT entryorguid, action_param1 FROM smart_scripts "
+        "WHERE source_type = 0 AND entryorguid > 0 AND action_type = 11"))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 const entry = uint32(fields[0].Get<int32>());
+            SpellInfo const* spell = sSpellMgr->GetSpellInfo(fields[1].Get<uint32>());
+            if (castOnlySmart.contains(entry) && spell && spell->CastTimeEntry && spell->CastTimeEntry->CastTime > 0)
+                castTimeSmart.insert(entry);
+        } while (result->NextRow());
+    }
+
     uint32 opponents = 0;
     uint32 packMembers = 0;
     uint32 elites = 0;
+    uint32 casters = 0;
     for (auto const& [entry, info] : *sObjectMgr->GetCreatureTemplates())
     {
         if (!spawned.contains(entry) || walkers.contains(entry))
@@ -157,14 +173,18 @@ Animus::Curriculum::Opponents::OpponentPool::OpponentPool()
         uint32 const maxLevel = std::min<uint32>(info.maxlevel, DEFAULT_MAX_LEVEL);
         if (info.rank == CREATURE_ELITE_NORMAL)
         {
+            bool const caster = castTimeSmart.contains(entry);
             for (uint32 level = info.minlevel; level <= maxLevel; ++level)
             {
                 if (defaultAI)
                     _byLevel[level].push_back(entry);
                 _packByLevel[level].push_back(entry);
+                if (caster)
+                    _castersByLevel[level].push_back(entry);
             }
 
             opponents += defaultAI ? 1 : 0;
+            casters += caster ? 1 : 0;
             ++packMembers;
         }
         else if (info.rank == CREATURE_ELITE_ELITE)
@@ -176,8 +196,8 @@ Animus::Curriculum::Opponents::OpponentPool::OpponentPool()
         }
     }
 
-    LOG_DEBUG("module.animus", "Opponent pool: {} opponent creatures, {} pack creatures ({} casting), {} elites",
-        opponents, packMembers, castOnlySmart.size(), elites);
+    LOG_INFO("module.animus", "Opponent pool: {} opponent creatures, {} pack creatures ({} casting, {} with cast-time "
+        "spells), {} elites", opponents, packMembers, castOnlySmart.size(), casters, elites);
 }
 
 uint32 Animus::Curriculum::Opponents::OpponentPool::PickNear(std::array<std::vector<uint32>, 81> const& byLevel,
@@ -212,6 +232,11 @@ uint32 Animus::Curriculum::Opponents::OpponentPool::RandomPackMember(uint8 level
 uint32 Animus::Curriculum::Opponents::OpponentPool::RandomElite(uint8 level) const
 {
     return PickNear(_elitesByLevel, level);
+}
+
+uint32 Animus::Curriculum::Opponents::OpponentPool::RandomCaster(uint8 level) const
+{
+    return PickNear(_castersByLevel, level);
 }
 
 Position Animus::Curriculum::Opponents::FindSpawnPoint(Player* bot, Map* map)

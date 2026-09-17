@@ -59,6 +59,10 @@ namespace Animus::Curriculum::Opponents
         /// An elite creature (default AI or casting SmartAI) for the level, or 0.
         [[nodiscard]] uint32 RandomElite(uint8 level) const;
 
+        /// A pack creature that is a spellcaster: its SmartAI casts at least one spell with a cast time, one an
+        /// interrupt can stop. The pack ladder puts one in every pack.
+        [[nodiscard]] uint32 RandomCaster(uint8 level) const;
+
     private:
         OpponentPool();
 
@@ -67,6 +71,7 @@ namespace Animus::Curriculum::Opponents
         std::array<std::vector<uint32>, 81> _byLevel;         // index = level
         std::array<std::vector<uint32>, 81> _packByLevel;
         std::array<std::vector<uint32>, 81> _elitesByLevel;
+        std::array<std::vector<uint32>, 81> _castersByLevel;
     };
 
     /// A random spot 40-50 yd from the bot, in line of sight on roughly level ground the bot can walk to (so a

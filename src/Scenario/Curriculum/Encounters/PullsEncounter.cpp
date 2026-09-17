@@ -28,7 +28,9 @@
 #include "Random.h"
 #include "SeatView.h"
 #include "Supplies.h"
+#include "Containers.h"
 #include <algorithm>
+#include <array>
 
 namespace
 {
@@ -36,6 +38,27 @@ namespace
     constexpr float PULL_TIME_SCALE_MS = 60000.0f;      // observation and fast-pull scale
     constexpr float QUIET_TIME_SCALE_MS = 20000.0f;
     constexpr float NEXT_PULL_SCALE_MS = 20000.0f;
+
+    /// A single pack's rungs, climbed per class/role (DifficultyLadder): more creatures, then more casters, then an
+    /// elite, then a level more. Every rung has a spellcaster (OpponentPool::RandomCaster), so there is always a cast
+    /// to interrupt; the others are any pack creature, casters included.
+    struct PackRung
+    {
+        uint8 Casters;
+        uint8 Others;
+        uint8 Elites;
+        uint8 Levels;       // above the seat's
+    };
+
+    constexpr std::array<PackRung, 6> PACK_RUNGS =
+    {{
+        { 1, 1, 0, 0 },     // 2 creatures
+        { 1, 2, 0, 0 },     // 3
+        { 1, 3, 0, 0 },     // 4
+        { 2, 2, 0, 0 },     // 4, two of them casters
+        { 1, 1, 1, 0 },     // 3 with an elite
+        { 2, 1, 1, 1 },     // 4 with an elite, a level above
+    }};
 
     /// The pull's creatures leave; enemy players in the slots (ambushers) stay.
     void Despawn(Animus::Env& env)
@@ -64,7 +87,7 @@ namespace
 }
 
 Animus::Curriculum::PullsEncounter::PullsEncounter(StageScenario& scenario, uint32 envs)
-    : Encounter(scenario), _envs(envs)
+    : Encounter(scenario), _envs(envs), _ladder(scenario, "pack rung")
 {
     // Load it at startup rather than on the first episode.
     Opponents::OpponentPool::Instance();
@@ -103,6 +126,15 @@ void Animus::Curriculum::PullsEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
     });
     table.Add("pack_size", [this](Env const& env, uint32) { return float(_envs[env.Index].PackSize); });
     table.Add("linked", [this](Env const& env, uint32) { return _envs[env.Index].Linked ? 1.0f : 0.0f; });
+
+    // The single pack's rung, as the creature duel's tier (a stage with both reports the duel's).
+    auto const singlePack = [](ArenaDefinition const& arena)
+    {
+        return arena.Against == Opposition::Pulls && arena.Schedule == PullSchedule::SinglePack && !arena.Owner;
+    };
+    auto const creature = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Creature; };
+    if (_scenario.Stage().AnyArena(singlePack) && !_scenario.Stage().AnyArena(creature))
+        table.Add("difficulty", [this](Env const& env, uint32) { return float(_envs[env.Index].Rung); });
 
     if (AnyGauntlet())
     {
@@ -205,6 +237,33 @@ bool Animus::Curriculum::PullsEncounter::SpawnPull(Env& env, Map* map)
             if (uint32 const entry = elite ? elite : pool.RandomPackMember(poolLevel))
                 entries.push_back(entry);
         }
+    }
+
+    // A single pack is its class/role's rung on the ladder.
+    if (entries.empty() && SinglePack(env))
+    {
+        uint16 const layout = data.Seats[0].L ? data.Seats[0].L->Index : 0;
+        DifficultyLadder::Pick const pick = _ladder.Draw(env, layout, MaxRung());
+        PackRung const& rung = PACK_RUNGS[pick.Tier];
+        pulls.Rung = pick.Tier;
+        pulls.RungLayout = layout;
+        pulls.RungCounts = pick.Counts;
+
+        level = uint8(std::min<uint32>(HIGHEST_OPPONENT_LEVEL, botLevel + rung.Levels));
+        uint8 const poolLevel = uint8(std::min<uint32>(level, DEFAULT_MAX_LEVEL));
+        pulls.EliteOrHigher = rung.Elites || rung.Levels;
+        for (uint32 i = 0; i < rung.Casters; ++i)
+            if (uint32 const entry = pool.RandomCaster(poolLevel))
+                entries.push_back(entry);
+        for (uint32 i = 0; i < rung.Elites; ++i)
+            if (uint32 const entry = pool.RandomElite(poolLevel))
+                entries.push_back(entry);
+        for (uint32 i = 0; i < rung.Others; ++i)
+            if (uint32 const entry = pool.RandomPackMember(poolLevel))
+                entries.push_back(entry);
+
+        // Which slot the caster takes is no tell.
+        Acore::Containers::RandomShuffle(entries);
     }
 
     if (entries.empty() && Gauntlet(env) && roll_chance_i(tuning.EliteChance))
@@ -621,6 +680,18 @@ void Animus::Curriculum::PullsEncounter::Reward(Env& env, uint32 seatIndex, Play
         tally.TimedOut = true;
         ledger.Add(RewardTerm::Timeout, -tuning.Timeout);
     }
+
+    // The outcome moves the class/role on the ladder, once: a clear without a death is a win.
+    if (seatIndex == 0 && pulls.RungCounts && !pulls.RungRecorded && (tally.Killed || tally.Died || tally.TimedOut))
+    {
+        pulls.RungRecorded = true;
+        _ladder.Record(pulls.RungLayout, pulls.Rung, tally.Killed && !tally.Died, MaxRung());
+    }
+}
+
+uint32 Animus::Curriculum::PullsEncounter::MaxRung() const
+{
+    return std::min<uint32>(_scenario.Tuning().Pulls.MaxTier, uint32(PACK_RUNGS.size()) - 1);
 }
 
 void Animus::Curriculum::PullsEncounter::AfterRewards(Env& env)
