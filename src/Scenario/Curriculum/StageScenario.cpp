@@ -833,6 +833,10 @@ std::vector<Animus::Curriculum::Layout const*> Animus::Curriculum::StageScenario
 Animus::Curriculum::Layout const& Animus::Curriculum::StageScenario::DrawLayout(Env const& env, uint32 seat,
     std::optional<Role> role) const
 {
+    // The stage viewer's choice for the first seat (ForceLayout).
+    if (seat == 0 && _forcedLayout < _layouts.size())
+        return _layouts[_forcedLayout];
+
     std::vector<Layout const*> const candidates = LayoutCandidates(role);
 
     // An evaluation spreads its seeds over the class/roles instead of drawing them: seed i plays candidate
@@ -1040,7 +1044,7 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
             minLevel = std::max(minLevel, data.Seats[seat].L->Assets->Kit->MinLevel());
 
     minLevel = std::max(minLevel, _stage.MinLevel);
-    uint8 const level = RandomLevel(minLevel, _level, _tuning.Characters);
+    uint8 const level = RandomLevel(minLevel, _forcedLevel ? _forcedLevel : _level, _tuning.Characters);
 
     // The first build opens a new instance, unless the host placed the env in one (Env::MapId/InstanceId).
     Map* map = !firstBuild || env.InstanceId ? env.FindMap() : nullptr;

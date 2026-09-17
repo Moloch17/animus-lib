@@ -67,11 +67,14 @@ bool Animus::Curriculum::CreatureEncounter::Build(Env& env, Map* map, uint8 /*le
     CurriculumTuning::DifficultyTuning const& difficulty = _scenario.Tuning().Difficulty;
     SeatState const& seat = data.Seats[0];
 
-    // The tier: spread over the seeds in an evaluation; the class/role's own in training, now and then a lower one.
+    // The tier: the one the stage viewer chose; spread over the seeds in an evaluation; the class/role's own in
+    // training, now and then a lower one.
     EnvFight& fight = _envs[env.Index];
     fight = EnvFight();
     fight.Layout = seat.L ? seat.L->Index : 0;
-    if (env.EpisodeSeedIndex != NO_EPISODE_SEED)
+    if (_scenario.ForcedTier() != NO_TIER)
+        fight.Tier = uint8(std::min(_scenario.ForcedTier(), difficulty.MaxTier));
+    else if (env.EpisodeSeedIndex != NO_EPISODE_SEED)
         fight.Tier = uint8(env.EpisodeSeedIndex % (difficulty.MaxTier + 1));
     else
     {
