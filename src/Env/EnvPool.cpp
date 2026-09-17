@@ -66,6 +66,7 @@ Animus::EnvPool::EnvPool(Scenario& scenario, StageSettings const& settings)
     EpisodeSeed.assign(envs, NO_EPISODE_SEED);
     _envSeed.assign(envs, NO_EPISODE_SEED);
     Actions.assign(agents, 0);
+    Goals.assign(agents, -1);     // Curriculum::NO_GOAL: no goal until a learner with a goal head sends one
     _reportInfoSum.assign(_spec.EpisodeInfoDim, 0.0);
 }
 
@@ -278,7 +279,12 @@ void Animus::EnvPool::ApplyActions()
     auto mark = std::chrono::steady_clock::now();
 
     for (Env& env : _envs)
+    {
+        if (!Goals.empty())
+            _scenario.ApplyGoals(env, &Goals[env.Index * _spec.AgentsPerEnv]);
+
         _scenario.ApplyActions(env, &Actions[env.Index * _spec.AgentsPerEnv]);
+    }
 
     _collect.ApplyNs = Since(mark);
 }

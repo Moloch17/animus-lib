@@ -156,6 +156,15 @@ namespace Animus::Curriculum
             float Cancel = 0.05f;
         } Casting;
 
+        /// The learner's goals (SeatGoal), in every stage that its policy chooses them for.
+        struct GoalTuning
+        {
+            /// Per decision whose actions matched the seat's goal (StageScenario::GoalHeld). Small on purpose: it is
+            /// there to keep the goals apart -- without it nothing stops every goal collapsing into one -- not to pay
+            /// for play the stage's own terms already price.
+            float Match = 0.01f;
+        } Goals;
+
         /// Looking after itself and its friends, in every stage.
         struct SupportTuning
         {
@@ -496,6 +505,8 @@ namespace Animus::Curriculum
             f("Actions.Repeat", tuning.Actions.Repeat);
             f("Actions.RepeatWindowMs", tuning.Actions.RepeatWindowMs);
             f("Actions.RepeatFree", tuning.Actions.RepeatFree);
+
+            f("Goals.Match", tuning.Goals.Match);
 
             f("Support.SelfHealing", tuning.Support.SelfHealing);
             f("Support.BuffCoverage", tuning.Support.BuffCoverage);
