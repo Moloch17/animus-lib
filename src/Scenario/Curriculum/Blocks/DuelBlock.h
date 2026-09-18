@@ -20,6 +20,7 @@
 #define ANIMUS_LIB_CURRICULUM_DUEL_BLOCK_H
 
 #include "Block.h"
+#include "IncomingSpell.h"
 #include "Position.h"
 #include <array>
 
@@ -91,8 +92,13 @@ namespace Animus::Curriculum
             OBS_BOT_ROOTED              = 62,
             OBS_BOT_SILENCED            = 63,
             OBS_BOT_SNARED              = 64,
-            OBS_STABLE_FIRST            = 65,   // hunters: per stable slot STABLE_FEATURES
-            OBS_COUNT_WITHOUT_STABLE    = 65
+            /// What the target is casting, by the spell's own properties (IncomingSpell): how long is left of it,
+            /// whether it is aimed at the seat, area, cone, interruptible, dispellable, a heal, school and mechanic.
+            /// OBS_TARGET_CASTING above is the bare "it is doing something"; these are the casts there is still time
+            /// to answer, and they are what tells a seat which cast is worth an interrupt.
+            OBS_TARGET_CAST_FIRST       = 65,
+            OBS_STABLE_FIRST            = 65 + IncomingSpell::FEATURE_COUNT,   // hunters: per slot STABLE_FEATURES
+            OBS_COUNT_WITHOUT_STABLE    = OBS_STABLE_FIRST
         };
 
         /// Per stabled beast: offered, family / 50, ferocity, tenacity, cunning.
