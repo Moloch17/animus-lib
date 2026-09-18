@@ -386,6 +386,16 @@ namespace Animus::Curriculum
             uint32 StayOnTargetMs = 10000;      // a melee spec: back into melee reach whenever the target leaves it
         } Options;
 
+        /// Ground effects: damage from something standing on the ground rather than aimed at the seat (a fire pool,
+        /// a poison cloud, a consecration). Charged on top of DamageTaken, which already charges it once as damage,
+        /// because this is the damage a seat could have walked out of -- it is the only term that pays for moving,
+        /// and it is what makes "step out of it" learnable at all. It reads zero wherever nothing puts anything on
+        /// the ground, which is most of the curriculum today and none of a dungeon.
+        struct HazardTuning
+        {
+            float Damage = 0.5f;                // per fraction of the seat's maximum health taken from a hazard
+        } Hazards;
+
         /// Resurrecting: a seat's own Soulstone or Reincarnation, and revives on allies (companion and party stages).
         struct ResurrectionTuning
         {
@@ -616,6 +626,7 @@ namespace Animus::Curriculum
 
             f("Options.RestMaxMs", tuning.Options.RestMaxMs);
             f("Options.HoldInterruptMs", tuning.Options.HoldInterruptMs);
+            f("Hazards.Damage", tuning.Hazards.Damage);
             f("Options.KeepRangeMs", tuning.Options.KeepRangeMs);
             f("Options.StayOnTargetMs", tuning.Options.StayOnTargetMs);
             f("Owner.LevelSpread", tuning.Owner.LevelSpread);

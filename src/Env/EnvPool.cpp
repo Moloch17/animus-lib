@@ -303,6 +303,12 @@ void Animus::EnvPool::RecordDamage(Unit const* attacker, Unit const* victim, uin
         AgentStats& stats = env.StepStats[hit->second.Agent];
         stats.DamageTaken += damage;
 
+        // Damage from a thing occupying ground rather than aimed at the agent: what stepping out of it would have
+        // avoided. A persistent area aura is a ground effect; an area aura from its caster (a consecration, a boss's
+        // damage aura) is the same problem from the seat's point of view -- stand somewhere else.
+        if (spell && (spell->HasEffect(SPELL_EFFECT_PERSISTENT_AREA_AURA) || spell->HasAreaAuraEffect()))
+            stats.HazardDamage += damage;
+
         // ... and which enemy slot dealt it, so crowd control can be paid what holding that enemy saves. A pet, totem
         // or guardian counts for its owner's slot; an attacker in no slot lands in DamageTaken alone.
         ObjectGuid const source = attacker->GetCharmerOrOwnerOrOwnGUID();

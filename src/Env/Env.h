@@ -62,6 +62,11 @@ namespace Animus
         // What crowd control prevents is read from here: an enemy's own damage rate is what holding it out of the
         // fight saves. Damage from anything not in a target slot is in DamageTaken only.
         std::array<uint64, MAX_TARGETS> DamageTakenBy{};
+        /// Of DamageTaken, what came from something standing on the ground rather than aimed at the agent: a fire
+        /// pool, a poison cloud, a consecration (a persistent area aura, or an area aura from its caster). This is
+        /// the damage a seat could have walked out of, and until it was counted it was indistinguishable from a
+        /// melee swing.
+        uint64 HazardDamage = 0;
         uint64 AllyDamageTaken = 0;     // by the env's allies (Env::Allies), from anything
         uint64 AllyHealing = 0;         // effective healing the agent (or its pets) did on the env's allies
         std::array<uint64, MAX_ALLIES> AllyDamageTakenBy{};    // the same, per Env::Allies index
@@ -87,6 +92,7 @@ namespace Animus
         void Add(AgentStats const& other)
         {
             Damage += other.Damage;
+            HazardDamage += other.HazardDamage;
             WhiteDamage += other.WhiteDamage;
             SpecialDamage += other.SpecialDamage;
             PetDamage += other.PetDamage;
