@@ -245,8 +245,6 @@ namespace Animus::Curriculum
         /// out of melee reach of what it was fighting and not casting at it.
         [[nodiscard]] static bool Controlled(Unit const* enemy);
 
-
-
         /// The stall grace earned by preparing for the current pull (SeatPull::PreparationBaseMs).
         [[nodiscard]] static uint32 PreparationRefundMs(CurriculumTuning::PullTuning const& tuning,
             CombatTally const& tally, SeatPull const& pull);
