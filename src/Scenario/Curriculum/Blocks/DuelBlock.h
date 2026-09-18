@@ -96,8 +96,10 @@ namespace Animus::Curriculum
             /// whether it is aimed at the seat, area, cone, interruptible, dispellable, a heal, school and mechanic.
             /// OBS_TARGET_CASTING above is the bare "it is doing something"; these are the casts there is still time
             /// to answer, and they are what tells a seat which cast is worth an interrupt.
-            OBS_TARGET_CAST_FIRST       = 65,
-            OBS_STABLE_FIRST            = 65 + IncomingSpell::FEATURE_COUNT,   // hunters: per slot STABLE_FEATURES
+            /// Where the seat stands on the target's threat list (1 = it holds aggro).
+            OBS_TARGET_THREAT_SHARE     = 65,
+            OBS_TARGET_CAST_FIRST       = 66,
+            OBS_STABLE_FIRST            = OBS_TARGET_CAST_FIRST + IncomingSpell::FEATURE_COUNT,   // hunters: per slot STABLE_FEATURES
             OBS_COUNT_WITHOUT_STABLE    = OBS_STABLE_FIRST
         };
 

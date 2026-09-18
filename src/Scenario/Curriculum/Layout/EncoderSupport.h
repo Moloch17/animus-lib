@@ -126,6 +126,13 @@ namespace Animus::Curriculum::Encoding
 
     [[nodiscard]] bool IsCrowdControlled(Unit const* unit);
 
+    /// Where `unit` stands on `enemy`'s threat list: its own threat over the threat of whoever the enemy is on, so 1
+    /// means it holds aggro (or is tied for it) and 0 means the enemy has never noticed it. Holding a pack off a
+    /// healer is threat management, and until now nothing in any block could see a threat table at all -- a tank
+    /// kept aggro only by accident, and every "threat" the encounters count is a proxy for it (who an enemy happens
+    /// to be swinging at this decision).
+    [[nodiscard]] float ThreatShare(Unit const* enemy, Unit const* unit);
+
     /// What kind of opponent a unit is, for the duel block and the critic state.
     ///
     /// The fair opponent creature types, one-hot in this order; a player counts as humanoid.

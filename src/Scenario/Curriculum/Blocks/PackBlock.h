@@ -60,7 +60,11 @@ namespace Animus::Curriculum
             /// it is aimed at the seat, area, cone, interruptible, dispellable, a heal, its school and mechanic.
             /// SLOT_CASTING above is the bare "it is doing something", instants included; these are the casts there
             /// is still time to answer.
-            SLOT_CAST_FIRST             = 16,
+            /// Where the seat stands on this enemy's threat list, over the threat of whoever it is on: 1 means it
+            /// holds aggro. SLOT_ATTACKS_BOT says the enemy is on it right now; this says how close that is to
+            /// changing, which is what tanking and what staying off a pack are both about.
+            SLOT_THREAT_SHARE           = 16,
+            SLOT_CAST_FIRST             = 17,
             SLOT_FEATURES               = SLOT_CAST_FIRST + IncomingSpell::FEATURE_COUNT
         };
 

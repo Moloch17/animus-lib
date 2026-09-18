@@ -333,6 +333,7 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
         obs[OBS_TARGET_IN_COMBAT] = target->IsInCombat() ? 1.0f : 0.0f;
         obs[OBS_TARGET_ATTACKS_BOT] = target->GetVictim() == bot ? 1.0f : 0.0f;
         obs[OBS_TARGET_CASTING] = target->IsNonMeleeSpellCast(false) ? 1.0f : 0.0f;
+        obs[OBS_TARGET_THREAT_SHARE] = Encoding::ThreatShare(target, bot);
         IncomingSpell::Observe(target, bot, obs + OBS_TARGET_CAST_FIRST);
         obs[OBS_TARGET_IN_LINE_OF_SIGHT] = bot->IsWithinLOSInMap(target) ? 1.0f : 0.0f;
         obs[OBS_BOT_MOVING] = bot->movespline->Finalized() ? 0.0f : 1.0f;
