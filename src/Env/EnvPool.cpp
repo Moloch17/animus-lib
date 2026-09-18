@@ -24,6 +24,7 @@
 #include "Random.h"
 #include "Spell.h"
 #include "SpellAuraEffects.h"
+#include "IncomingSpell.h"
 #include "SpellInfo.h"
 #include "StageSettings.h"
 #include "StringFormat.h"
@@ -570,7 +571,7 @@ void Animus::EnvPool::RecordCastCancelled(Unit const* caster, Spell* spell, bool
     auto const agent = _agents.find(caster->GetGUID());
     if (agent == _agents.end())
     {
-        RecordTargetInterrupted(caster, bySelf);
+        RecordTargetInterrupted(caster, spell, bySelf);
         return;
     }
 
@@ -600,7 +601,7 @@ void Animus::EnvPool::RecordCastCancelled(Unit const* caster, Spell* spell, bool
         ++stats.CastsOther;
 }
 
-void Animus::EnvPool::RecordTargetInterrupted(Unit const* caster, bool bySelf)
+void Animus::EnvPool::RecordTargetInterrupted(Unit const* caster, Spell* spell, bool bySelf)
 {
     // Stopped by itself (it moved, changed its mind) or by dying is not an interrupt.
     if (bySelf || !caster->IsAlive())
@@ -613,7 +614,13 @@ void Animus::EnvPool::RecordTargetInterrupted(Unit const* caster, bool bySelf)
     Env& owner = _envs[env->second];
     if (caster->GetMapId() == owner.MapId
         && std::find(owner.Targets.begin(), owner.Targets.end(), caster->GetGUID()) != owner.Targets.end())
-        owner.StepInterruptedTargets.push_back(caster->GetGUID());
+    {
+        // What the interrupt was worth is decided here, while the cast still exists to be read.
+        uint32 const castMs = spell && spell->GetCastTime() > 0 ? uint32(spell->GetCastTime()) : 0;
+        Curriculum::IncomingSpell::Prevented const prevented =
+            Curriculum::IncomingSpell::Classify(spell ? spell->m_spellInfo : nullptr, castMs);
+        owner.StepInterruptedTargets.push_back({ caster->GetGUID(), uint8(prevented) });
+    }
 }
 
 void Animus::EnvPool::ReportEpisode(uint32 envIndex)

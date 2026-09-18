@@ -162,7 +162,17 @@ namespace Animus
 
         /// Targets whose cast or channel was cut short by something other than themselves since the last decision
         /// (an interrupt, stun, silence, ...). Written by the map thread updating the env's instance.
-        std::vector<ObjectGuid> StepInterruptedTargets;
+        /// Enemies whose cast was stopped this decision, with what the cast was worth stopping (IncomingSpell's
+        /// Prevented, kept as a plain value so Env stays free of the curriculum's headers). An interrupt is paid by
+        /// what it prevented, so the kind has to survive the moment the cast dies -- afterwards there is nothing
+        /// left to read it from.
+        struct InterruptedCast
+        {
+            ObjectGuid Caster;
+            uint8 Prevented = 0;
+        };
+
+        std::vector<InterruptedCast> StepInterruptedTargets;
 
         [[nodiscard]] Map* FindMap() const;
         [[nodiscard]] Player* FindBot(uint32 agent) const;

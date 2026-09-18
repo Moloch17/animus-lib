@@ -249,6 +249,14 @@ namespace Animus::Curriculum
             float StealthOpener = 0.5f;
             float StealthUtility = 0.05f;
             float Interrupt = 0.3f;
+            /// An interrupt is paid by what it prevented, as a multiple of Interrupt: a heal undoes damage already
+            /// dealt, an area spell would have hit everyone, a long cast was a large part of the caster's output.
+            /// Never below 1 -- the flat term is how a class finds interrupting at all, and paying only for heals
+            /// risks the behaviour never appearing to be shaped (stage 2: the classes that interrupt found it
+            /// through the flat term).
+            float InterruptHeal = 3.0f;
+            float InterruptArea = 2.0f;
+            float InterruptLong = 1.5f;
             float Kill = 0.5f;
             float StepCost = 0.0002f;           // per decision
             /// Owner arenas (stages 4, 5, 8), win-first as the solo gauntlet: each pull cleared pays Clear plus
@@ -577,6 +585,9 @@ namespace Animus::Curriculum
             f("Pulls.StealthOpener", tuning.Pulls.StealthOpener);
             f("Pulls.StealthUtility", tuning.Pulls.StealthUtility);
             f("Pulls.Interrupt", tuning.Pulls.Interrupt);
+            f("Pulls.InterruptHeal", tuning.Pulls.InterruptHeal);
+            f("Pulls.InterruptArea", tuning.Pulls.InterruptArea);
+            f("Pulls.InterruptLong", tuning.Pulls.InterruptLong);
             f("Pulls.Kill", tuning.Pulls.Kill);
             f("Pulls.StepCost", tuning.Pulls.StepCost);
             f("Pulls.Clear", tuning.Pulls.Clear);
