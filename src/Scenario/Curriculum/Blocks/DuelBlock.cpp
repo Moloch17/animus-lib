@@ -254,6 +254,20 @@ void Animus::Curriculum::DuelBlock::Observe(SeatView const& view, float* obs, ui
         obs[OBS_CAST_REMAINING] = std::min(1.0f, left / 3000.0f);
     }
 
+    // The ground it is standing on, whether or not it has a target: free, since a ground effect applies an aura to
+    // whoever stands in it and the aura knows the object.
+    Encoding::Hazard hazard;
+    if (uint32 const hazards = Encoding::StandingInHazards(bot, &hazard))
+    {
+        obs[OBS_HAZARDS_STANDING_IN] = std::min(1.0f, float(hazards) / 3.0f);
+        if (hazard.Present)
+        {
+            obs[OBS_HAZARD_WAY_OUT] = std::min(1.0f, std::max(0.0f, hazard.Radius - hazard.Distance) / 20.0f);
+            obs[OBS_HAZARD_BEARING_SIN] = std::sin(hazard.Bearing);
+            obs[OBS_HAZARD_BEARING_COS] = std::cos(hazard.Bearing);
+        }
+    }
+
     obs[OBS_SHAPESHIFTED] = Encoding::CancellableForm(bot) ? 1.0f : 0.0f;
     obs[OBS_COMBAT_TIME] = view.CombatTime;
 
