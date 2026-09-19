@@ -2136,8 +2136,17 @@ float Animus::Curriculum::StageScenario::SeatReward(Env& env, uint32 seatIndex)
             * float(step.SelfHealing + step.SelfProtection) / float(std::max<uint32>(1, bot->GetMaxHealth())));
 
         if (uint32 const spent = seat.StepHealingPowerSpent; spent && bot->getPowerType() == POWER_MANA)
-            seat.Rewards.Add(RewardTerm::HealingMana, -_tuning.Support.HealingMana
-                * float(spent) / float(std::max<uint32>(1, bot->GetMaxPower(POWER_MANA))));
+        {
+            // Pull after pull, the mana a heal costs is already paid for at the next engagement (readiness), so
+            // charging it here as well prices the same mana twice. The charge is a stand-in for an opportunity cost
+            // and belongs where there is no later fight to have one.
+            PullSchedule const schedule = Arena(env).Schedule;
+            bool const readiness = schedule == PullSchedule::Gauntlet || schedule == PullSchedule::Sequence;
+            float const weight = readiness ? _tuning.Support.HealingManaWithReadiness : _tuning.Support.HealingMana;
+            if (weight > 0.0f)
+                seat.Rewards.Add(RewardTerm::HealingMana,
+                    -weight * float(spent) / float(std::max<uint32>(1, bot->GetMaxPower(POWER_MANA))));
+        }
         seat.StepHealingPowerSpent = 0;
     }
 
