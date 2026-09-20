@@ -83,6 +83,10 @@ namespace
     /// How often the nearest hazard is searched for, and how far. A ground effect does not move, so between searches
     /// the cached one is simply measured again: the search is a grid visit, the measurement is arithmetic.
     constexpr uint32 HAZARD_SEARCH_MS = 1000;
+    /// How long an accepted resurrection is given to land before the offer may be taken again. A delayed
+    /// teleport reschedules the resurrect (Player::ProcessDelayedOperations), so it does not always finish on
+    /// the decision it was accepted on.
+    constexpr uint64 RESURRECT_RETRY_MS = 5000;
     constexpr float HAZARD_SEARCH_RANGE = 30.0f;
     constexpr int32 ABSORB_EXPIRY_SLACK_MS = 500;   // an absorb gone with more than a decision and this left soaked it
 
@@ -1209,6 +1213,9 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
     // A new episode starts from clean totals, in every encounter: those this arena does not use report 0.
     for (SeatState& seat : data.Seats)
         seat.ResetEpisode();
+    // No resurrection offer is in flight into a new episode, and the clock it was taken on has restarted.
+    data.ResurrectBy.fill(NO_SEAT);
+    data.ResurrectMs.fill(0);
     for (auto const& encounter : _encounters)
         encounter->ResetEpisode(env);
 
@@ -1535,29 +1542,65 @@ void Animus::Curriculum::StageScenario::StockSeats(Env& env)
     }
 }
 
+/// A client answers a resurrection offer once (CMSG_RESURRECT_RESPONSE) and is done with it, so nothing in the
+/// core clears the request afterwards -- Player::ResurectUsingRequestData does not, and neither does
+/// ResurrectPlayer. Polling it every decision, as this must, therefore has to remember that it has already
+/// accepted one: without that, a single landed Rebirth stands its target up again free of charge every decision
+/// it dies for the rest of the episode. Measured before this guard: 38.4 revives an episode in stage 4 against
+/// 0.97 owner deaths, 88% of druid_dps's entire return, and the same shape in druid_heal.
+///
+/// The credit is paid when the ally is actually alive, not when the offer is taken: the resurrect can be held
+/// up by a delayed teleport, and counting the attempt paid for one that never landed.
 void Animus::Curriculum::StageScenario::AcceptResurrections(Env& env)
 {
     EnvState& data = Data(env);
 
-    std::vector<Player*> players;
+    // The seats, then the owner in the slot past them.
+    std::array<Player*, MAX_SEATS + 1> players{};
     for (uint32 seat = 0; seat < data.ActiveSeats; ++seat)
-        players.push_back(SeatBot(env, seat));
-    players.push_back(Owner(env));
+        players[seat] = SeatBot(env, seat);
+    players[MAX_SEATS] = Owner(env);
 
-    for (Player* player : players)
+    for (uint32 slot = 0; slot < players.size(); ++slot)
     {
-        if (!player || player->IsAlive() || !player->isResurrectRequested())
+        Player* player = players[slot];
+        if (!player)
             continue;
 
-        for (uint32 seat = 0; seat < data.ActiveSeats; ++seat)
+        if (player->IsAlive())
         {
-            if (Player* reviver = SeatBot(env, seat); reviver && player->isResurrectRequestedBy(reviver->GetGUID()))
+            if (!data.ResurrectMs[slot])
+                continue;
+
+            // It landed. Pay the seat that offered it, once, and clear the offer so the next death does not
+            // accept a request nobody made again.
+            if (uint32 const by = data.ResurrectBy[slot]; by < data.ActiveSeats)
             {
-                data.Seats[seat].StepRevivedAlly = true;
-                ++data.Seats[seat].Revives;
+                data.Seats[by].StepRevivedAlly = true;
+                ++data.Seats[by].Revives;
             }
+
+            data.ResurrectMs[slot] = 0;
+            player->clearResurrectRequestData();
+            continue;
         }
 
+        // An offer already accepted and still on its way: wait for it rather than take it again. The retry
+        // window gives up on one that never lands, so a stuck teleport does not bar the seat for the episode.
+        if (data.ResurrectMs[slot] && env.EpisodeElapsedMs < data.ResurrectMs[slot] + RESURRECT_RETRY_MS)
+            continue;
+
+        if (!player->isResurrectRequested())
+            continue;
+
+        uint32 by = NO_SEAT;
+        for (uint32 seat = 0; seat < data.ActiveSeats; ++seat)
+            if (Player* reviver = SeatBot(env, seat); reviver && player->isResurrectRequestedBy(reviver->GetGUID()))
+                by = seat;
+
+        data.ResurrectBy[slot] = by;
+        // 0 means no offer is in flight, so an offer taken on the episode's first millisecond still counts.
+        data.ResurrectMs[slot] = std::max<uint64>(1, env.EpisodeElapsedMs);
         player->ResurectUsingRequestData();
     }
 }
