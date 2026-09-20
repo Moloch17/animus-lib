@@ -592,6 +592,13 @@ namespace Animus::Curriculum
             uint32 Duty = NO_SEAT;              // the seat that owes the next interrupt or control
             uint32 Changes = 0;                 // how often the call moved, for the episode info
             uint32 CalledStep = 0;              // the decision the order last changed on
+            /// Whether the call is worth following, which is upstream of whether it is followed: decisions with
+            /// a living enemy to call, those whose call was one, those whose call was the most hurt of them,
+            /// and what picking at random among the living would have scored.
+            uint32 Decisions = 0;
+            uint32 FocusAlive = 0;
+            uint32 FocusLowest = 0;
+            float ChanceSum = 0.0f;
         };
 
         struct EnvDirector
@@ -607,6 +614,8 @@ namespace Animus::Curriculum
         void Command(Env& env, uint32 side);
         /// Whether the env's arena has the director learn rather than follow the script.
         [[nodiscard]] bool Learned(Env const& env) const;
+        /// Tally what the side's standing call is worth this decision, scripted or learned.
+        void Measure(Env& env, uint32 side);
         /// Note that the order changed, for order_changes and the director's own "how long has this stood".
         void Changed(SideOrder& order, uint32 steps) const;
 

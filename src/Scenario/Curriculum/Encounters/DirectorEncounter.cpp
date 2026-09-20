@@ -95,6 +95,25 @@ void Animus::Curriculum::DirectorEncounter::AddEpisodeInfo(EpisodeInfoTable& tab
     {
         return _envs[env.Index].Sides[_scenario.SideOf(env, seat)].Focus ? 1.0f : 0.0f;
     });
+    // Whether the call was worth following, which is upstream of whether it was followed. A seat that ignores a
+    // director and a director that names nothing worth fighting look identical in order_focus_kept alone.
+    auto const share = [this](Env const& env, uint32 seat, auto pick)
+    {
+        SideOrder const& side = _envs[env.Index].Sides[_scenario.SideOf(env, seat)];
+        return side.Decisions ? float(pick(side)) / float(side.Decisions) : 0.0f;
+    };
+    table.Add("order_focus_alive", [share](Env const& env, uint32 seat)
+    {
+        return share(env, seat, [](SideOrder const& side) { return float(side.FocusAlive); });
+    });
+    table.Add("order_focus_lowest", [share](Env const& env, uint32 seat)
+    {
+        return share(env, seat, [](SideOrder const& side) { return float(side.FocusLowest); });
+    });
+    table.Add("order_focus_chance", [share](Env const& env, uint32 seat)
+    {
+        return share(env, seat, [](SideOrder const& side) { return side.ChanceSum; });
+    });
     // Whether the side was doing what it was told: the share of its seats on the called target.
     table.Add("order_focus_kept", [this](Env const& env, uint32 seat)
     {
@@ -121,10 +140,57 @@ void Animus::Curriculum::DirectorEncounter::Changed(SideOrder& order, uint32 ste
     order.CalledStep = steps;
 }
 
+void Animus::Curriculum::DirectorEncounter::Measure(Env& env, uint32 side)
+{
+    SideOrder& order = _envs[env.Index].Sides[side];
+
+    std::array<uint32, TEAM_SEATS> theirs{};
+    uint32 const count = _scenario.SideSeats(env, side ? 0 : 1, theirs);
+
+    Player const* lowest = nullptr;
+    Player const* focus = nullptr;
+    float least = 2.0f;
+    uint32 living = 0;
+    for (uint32 slot = 0; slot < count && slot < PACK_SLOTS; ++slot)
+    {
+        Player const* bot = _scenario.SeatBot(env, theirs[slot]);
+        if (!bot || !bot->IsAlive())
+            continue;
+
+        ++living;
+        if (float const left = CombatReward::HealthLeft(bot); left < least)
+        {
+            least = left;
+            lowest = bot;
+        }
+        if (bot->GetGUID() == order.Focus)
+            focus = bot;
+    }
+
+    // Nothing to call: not a decision the call can be judged on either way.
+    if (!living)
+        return;
+
+    ++order.Decisions;
+    // What naming one of the living at random would have scored, so a side of two and a side of ten are read on
+    // the same scale and a director that calls well is told apart from one the arena makes look good.
+    order.ChanceSum += 1.0f / float(living);
+    if (!focus)
+        return;
+
+    ++order.FocusAlive;
+    if (focus == lowest)
+        ++order.FocusLowest;
+}
+
 void Animus::Curriculum::DirectorEncounter::Update(Env& env)
 {
     EnvDirector& state = _envs[env.Index];
     uint32 const steps = state.Steps++;
+
+    // Measured every decision and for either kind of director, so the scripted one is the yardstick.
+    for (uint32 side = 0; side < TEAM_COUNT; ++side)
+        Measure(env, side);
 
     // A learned director speaks through its own agent's actions (Call), on whatever cadence the learner gives
     // it; there is nothing to script.
