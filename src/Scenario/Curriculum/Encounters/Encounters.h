@@ -592,7 +592,12 @@ namespace Animus::Curriculum
             Position Place;
             bool HasPlace = false;
             PlaceAnchor Anchor = PlaceAnchor::TeamCentre;
-            PlaceOffset Offset = PlaceOffset::At;
+            /// Toward, not At. At the side's own centre a place is just where the side already is, which
+            /// makes Rally::Point a synonym for Rally::Stack and gives the director two actions that say the
+            /// same thing -- measured on the first run with places: the side averaged 7.9 yards from the
+            /// called place against a radius of 8. Toward the enemy at the near ring is a push, which nothing
+            /// else in the vocabulary says.
+            PlaceOffset Offset = PlaceOffset::Toward;
             PlaceRing Ring = PlaceRing::Near;
             ObjectGuid Focus;
             uint32 Duty = NO_SEAT;              // the seat that owes the next interrupt or control
