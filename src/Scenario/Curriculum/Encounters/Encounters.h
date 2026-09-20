@@ -614,6 +614,8 @@ namespace Animus::Curriculum
         void Command(Env& env, uint32 side);
         /// Whether the env's arena has the director learn rather than follow the script.
         [[nodiscard]] bool Learned(Env const& env) const;
+        /// Drop what the side is being asked for once it cannot be done: a call at a corpse is not a call.
+        void Forget(Env& env, uint32 side);
         /// Tally what the side's standing call is worth this decision, scripted or learned.
         void Measure(Env& env, uint32 side);
         /// Note that the order changed, for order_changes and the director's own "how long has this stood".

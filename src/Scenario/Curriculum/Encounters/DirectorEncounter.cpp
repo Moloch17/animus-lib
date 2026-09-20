@@ -140,6 +140,39 @@ void Animus::Curriculum::DirectorEncounter::Changed(SideOrder& order, uint32 ste
     order.CalledStep = steps;
 }
 
+void Animus::Curriculum::DirectorEncounter::Forget(Env& env, uint32 side)
+{
+    EnvDirector& state = _envs[env.Index];
+    SideOrder& order = state.Sides[side];
+
+    if (order.Focus)
+    {
+        std::array<uint32, TEAM_SEATS> theirs{};
+        uint32 const count = _scenario.SideSeats(env, side ? 0 : 1, theirs);
+
+        Player const* focus = nullptr;
+        for (uint32 slot = 0; slot < count && !focus; ++slot)
+            if (Player const* bot = _scenario.SeatBot(env, theirs[slot]); bot && bot->GetGUID() == order.Focus)
+                focus = bot;
+
+        if (!focus || !focus->IsAlive())
+        {
+            order.Focus = ObjectGuid::Empty;
+            Changed(order, state.Steps);
+        }
+    }
+
+    if (order.Duty != NO_SEAT)
+    {
+        Player const* duty = _scenario.SeatBot(env, order.Duty);
+        if (!duty || !duty->IsAlive())
+        {
+            order.Duty = NO_SEAT;
+            Changed(order, state.Steps);
+        }
+    }
+}
+
 void Animus::Curriculum::DirectorEncounter::Measure(Env& env, uint32 side)
 {
     SideOrder& order = _envs[env.Index].Sides[side];
@@ -187,6 +220,15 @@ void Animus::Curriculum::DirectorEncounter::Update(Env& env)
 {
     EnvDirector& state = _envs[env.Index];
     uint32 const steps = state.Steps++;
+
+    // Before anything reads the order: a call at a corpse is not a call. The order stands between the
+    // director's decisions -- ten of them, and longer still if it never spends another action on the focus --
+    // so a target that dies mid-span would otherwise go on being asked for. Measured before this was added,
+    // 37% of all decisions carried an order aimed at someone dead or gone, which no seat could follow at any
+    // price, and which dragged order_focus_kept below chance on its own: a seat fighting someone alive cannot
+    // match a call pointing at someone dead.
+    for (uint32 side = 0; side < TEAM_COUNT; ++side)
+        Forget(env, side);
 
     // Measured every decision and for either kind of director, so the scripted one is the yardstick.
     for (uint32 side = 0; side < TEAM_COUNT; ++side)
