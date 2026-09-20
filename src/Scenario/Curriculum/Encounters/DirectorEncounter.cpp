@@ -59,8 +59,8 @@ void Animus::Curriculum::DirectorEncounter::AddEpisodeInfo(EpisodeInfoTable& tab
     table.Add("order_focus_kept", [this](Env const& env, uint32 seat)
     {
         SideOrder const& side = _envs[env.Index].Sides[_scenario.SideOf(env, seat)];
-        Player const* bot = _scenario.SeatBot(env, seat);
-        return side.Focus && bot && bot->GetTarget() == side.Focus ? 1.0f : 0.0f;
+        Unit const* target = _scenario.SeatTarget(env, seat);
+        return side.Focus && target && target->GetGUID() == side.Focus ? 1.0f : 0.0f;
     });
 }
 

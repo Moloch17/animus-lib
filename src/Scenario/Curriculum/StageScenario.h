@@ -186,6 +186,9 @@ namespace Animus::Curriculum
 
         /// Seat `seat`'s bot, in or out of the world (see BotSlot::Active).
         [[nodiscard]] Player* SeatBot(Env const& env, uint32 seat) const;
+        /// What SeatReward last resolved as this seat's target (SeatState::CurrentTargetGuid), for the const readers
+        /// -- episode info, state -- that cannot ask the encounters again. Falls back to the first target slot.
+        [[nodiscard]] Unit* SeatTarget(Env const& env, uint32 seat) const;
 
         /// The scripted owner, or null (no owner in the env's arena, or none built).
         [[nodiscard]] Player* Owner(Env const& env) const;
@@ -241,9 +244,6 @@ namespace Animus::Curriculum
         /// What the seat's actions aim at: the dummy or creature, the selected pack enemy, the enemy player. Null
         /// between gauntlet pulls.
         [[nodiscard]] Unit* CurrentTarget(Env const& env, uint32 seat);
-        /// What SeatReward last resolved as this seat's target (SeatState::CurrentTargetGuid), for the const readers
-        /// -- episode info, state -- that cannot ask the encounters again. Falls back to the first target slot.
-        [[nodiscard]] Unit* SeatTarget(Env const& env, uint32 seat) const;
         /// Remember where the seat last saw its target, while it can see it.
         static void TrackTarget(Env const& env, SeatState& seat, Player* bot, Unit* target);
         /// The seat's view. Enemies the bot can neither see nor detect are left out of it, the target included

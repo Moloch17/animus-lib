@@ -406,11 +406,13 @@ namespace Animus::Curriculum
             std::array<uint32, MAX_SEATS> ControlMs{};
         };
 
-        /// Whether the env's opponent is the other seat.
-        /// The other seat is the opponent: self-play, or a flag match.
+        /// Whether the seats fight each other rather than a scripted player: one a side in a Mirror arena,
+        /// TeamSeats of them a side in a Teams arena. A Teams arena read as anything else spawns a scripted
+        /// opponent and points every seat at it, which is a gang-up, not a match.
         [[nodiscard]] bool Mirror(Env const& env) const
         {
-            return _scenario.Arena(env).Seats == SeatPlan::Mirror;
+            SeatPlan const seats = _scenario.Arena(env).Seats;
+            return seats == SeatPlan::Mirror || seats == SeatPlan::Teams;
         }
         [[nodiscard]] bool Flag(Env const& env) const
         {
@@ -418,6 +420,9 @@ namespace Animus::Curriculum
         }
         void TrackInterrupt(Env& env, uint32 seat, Unit const* opponent, RewardLedger& ledger);
         [[nodiscard]] Player* Find(Env const& env, uint32 seat) const;
+        /// The seats of the side `seat` fights, in that side's own seat order, capped at the slots a seat can
+        /// observe. The order has to be stable across a match: target selection indexes it.
+        uint32 EnemySeats(Env const& env, uint32 seat, std::array<uint32, PACK_SLOTS>& out) const;
         bool RebuildScripted(Env& env, Player* bot, Map* map);
 
         std::vector<EnvOpponent> _envs;
