@@ -209,7 +209,16 @@ namespace Animus::Curriculum
             /// Paid per decision rather than once on arrival, unlike Goals.Match: holding a called target is
             /// the behaviour wanted, not a place to reach, and paying once per call would pay a side afresh
             /// every time its director changed its mind.
-            float Focus = 0.01f;
+            ///
+            /// Small because a per-decision term accumulates over a whole fight. At 0.01 it earned 5.01 an
+            /// episode, 23.7% of the stage's gross reward, level with the kill (5.23) and the death (-5.27)
+            /// and 70 times goal_match (0.07): a seat paid more for staying on the called target than for
+            /// winning would tunnel on it past every reason to switch. This is the mistake Goals.Match's own
+            /// comment records -- paying to sit in a state made standing at range the stage's second largest
+            /// earner. At 0.001 full compliance is worth about 0.5 an episode, a tenth of the kill: enough to
+            /// break the tie between fighting whoever and fighting the one called, and never enough to outbid
+            /// the fight itself.
+            float Focus = 0.001f;
         } Order;
 
         /// Looking after itself and its friends, in every stage.
