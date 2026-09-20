@@ -249,12 +249,23 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
         for (ClassRoleProfile const& profile : ClassRoleProfiles())
             ClassRoleAssets::For(profile);
 
-    _spec.AgentsPerEnv = _seatCount;
+    // A stage with any learned-directed arena carries the two director agents in every episode: the spec is
+    // fixed for the run, so the undirected episodes mark them absent instead (AgentPresence).
+    if (_stage.AnyArena([](ArenaDefinition const& arena) { return arena.Directed && arena.DirectorLearned; }))
+    {
+        Layout director = Layout::BuildDirector(_stage);
+        director.Index = uint16(_layouts.size());
+        _directorLayout = director.Index;
+        _layouts.push_back(std::move(director));
+    }
+
+    _spec.AgentsPerEnv = _seatCount + (HasDirectors() ? TEAM_COUNT : 0);
     for (Layout const& layout : _layouts)
     {
         _spec.ObsDim = std::max(_spec.ObsDim, layout.ObsDim);
         _spec.NumActions = std::max(_spec.NumActions, layout.NumActions);
-        _spec.Layouts.push_back(LayoutSpec{ layout.Profile->Name, layout.ObsDim, layout.NumActions });
+        _spec.Layouts.push_back(LayoutSpec{ layout.Director ? DirectorLayout::Name() : layout.Profile->Name,
+            layout.ObsDim, layout.NumActions });
     }
 
     _spec.StateDim = STATE_GLOBAL_COUNT + MAX_SEATS * STATE_SEAT_FEATURES + PACK_SLOTS * STATE_ENEMY_FEATURES;
@@ -312,7 +323,11 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     // Last: its orders are read from what every other encounter has already set up.
     Encounter* director = nullptr;
     if (_stage.AnyArena(directed))
-        director = add(std::make_unique<DirectorEncounter>(*this, envs));
+    {
+        auto owned = std::make_unique<DirectorEncounter>(*this, envs);
+        _director = owned.get();
+        director = add(std::move(owned));
+    }
 
     // The order episode info columns and reward terms are listed in.
     for (Encounter* encounter : std::initializer_list<Encounter*>{ creature, pulls, _owner, _party, opponent, ambush,
@@ -954,15 +969,21 @@ void Animus::Curriculum::StageScenario::WriteStageFiles(StageSettings const& set
     state["arena_first"] = uint32(STATE_ARENA_FIRST);
     state["arena_count"] = MAX_ARENAS;
 
+    // Keyed by layout name, which for the director is "director": it has no class/role to be named after.
+    auto const layoutName = [](Layout const& layout)
+    {
+        return layout.Director ? std::string(DirectorLayout::Name()) : layout.Profile->Name;
+    };
+
     boost::json::object& models = stageFile["models"].emplace_object();
     for (Layout const& layout : _layouts)
-        models[layout.Profile->Name] = layout.ModelName();
+        models[layoutName(layout)] = layout.ModelName();
 
     // Where each block sits in each layout: a later stage seeds its networks block by block from these.
     boost::json::object& layouts = stageFile["layouts"].emplace_object();
     for (Layout const& layout : _layouts)
     {
-        boost::json::object& entry = layouts[layout.Profile->Name].emplace_object();
+        boost::json::object& entry = layouts[layoutName(layout)].emplace_object();
         entry["obs_dim"] = layout.ObsDim;
         entry["num_actions"] = layout.NumActions;
 
@@ -1023,12 +1044,13 @@ std::vector<Animus::Curriculum::Layout const*> Animus::Curriculum::StageScenario
     std::vector<Layout const*> candidates;
     if (role)
         for (Layout const& layout : _layouts)
-            if (layout.PlayRole() == *role)
+            if (!layout.Director && layout.PlayRole() == *role)
                 candidates.push_back(&layout);
 
     if (candidates.empty())
         for (Layout const& layout : _layouts)
-            candidates.push_back(&layout);
+            if (!layout.Director)
+                candidates.push_back(&layout);
 
     return candidates;
 }
@@ -1127,6 +1149,11 @@ uint32 Animus::Curriculum::StageScenario::SideOf(Env const& env, uint32 seat) co
 
 bool Animus::Curriculum::StageScenario::IsOpponentSeat(Env const& env, uint32 agent) const
 {
+    // The director of the far side is that side, as much as its seats are: a scripted-opponent evaluation has to
+    // replace both or the learner is still commanding the team it is being scored against.
+    if (HasDirectors() && agent >= _seatCount)
+        return agent == _seatCount + 1;
+
     // Self-play: the far side of the match is the opponent. One seat a side in a Mirror, TEAM_SEATS of them in
     // a Teams arena.
     switch (Arena(env).Seats)
@@ -1351,10 +1378,13 @@ bool Animus::Curriculum::StageScenario::Rebuild(Env& env)
 
     env.MapId = map->GetId();
     env.InstanceId = map->GetInstanceId();
-    // One agent slot per seat; an empty seat's slot holds no bot.
+    // One agent slot per agent, seats first; an empty seat's slot holds no bot, and neither does a director's --
+    // it commands a side rather than playing a character. EnvPool wants one slot per agent either way.
     env.Bots.clear();
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         env.Bots.push_back(seat < data.ActiveSeats ? SeatBot(env, seat)->GetGUID() : ObjectGuid::Empty);
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+        env.Bots.push_back(ObjectGuid::Empty);
     env.Targets.clear();
 
     for (Encounter* encounter : ActiveEncounters(env))
@@ -1658,6 +1688,11 @@ void Animus::Curriculum::StageScenario::ApplyActions(Env& env, int32 const* acti
 
     AcceptResurrections(env);
 
+    // The directors speak first: a call made this decision is one the seats can already read when they act on it.
+    if (_director && DirectorsActive(env))
+        for (uint32 side = 0; side < TEAM_COUNT; ++side)
+            _director->Call(env, side, actions[_seatCount + side]);
+
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         ApplySeatAction(env, seat, actions[seat]);
 }
@@ -1861,7 +1896,28 @@ void Animus::Curriculum::StageScenario::Observe(Env& env, float* obs, float* sta
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         ObserveSeat(env, seat, obs + seat * _spec.ObsDim, mask ? mask + seat * _spec.NumActions : nullptr);
 
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+        ObserveDirector(env, side, obs + (_seatCount + side) * _spec.ObsDim,
+            mask ? mask + (_seatCount + side) * _spec.NumActions : nullptr);
+
     WriteState(env, state);
+}
+
+void Animus::Curriculum::StageScenario::ObserveDirector(Env& env, uint32 side, float* obs, uint8* mask)
+{
+    // The row is padded to the widest layout's, so clear all of it and let the director's own part fill the front.
+    std::fill(obs, obs + _spec.ObsDim, 0.0f);
+    if (mask)
+    {
+        std::fill(mask, mask + _spec.NumActions, uint8(0));
+        mask[DirectorLayout::ACTION_HOLD] = 1;
+    }
+
+    DirectorLayout::DirectorView view;
+    if (_director && DirectorsActive(env))
+        _director->ViewSide(env, side, view);
+
+    DirectorLayout::Observe(view, obs, mask);
 }
 
 void Animus::Curriculum::StageScenario::AgentLayouts(Env const& env, uint16* layout) const
@@ -1869,6 +1925,9 @@ void Animus::Curriculum::StageScenario::AgentLayouts(Env const& env, uint16* lay
     EnvState const& data = Data(env);
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         layout[seat] = data.Seats[seat].L ? data.Seats[seat].L->Index : 0;
+
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+        layout[_seatCount + side] = uint16(_directorLayout);
 }
 
 void Animus::Curriculum::StageScenario::AgentPresence(Env const& env, uint8* present) const
@@ -1876,6 +1935,31 @@ void Animus::Curriculum::StageScenario::AgentPresence(Env const& env, uint8* pre
     EnvState const& data = Data(env);
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         present[seat] = data.Seats[seat].L ? 1 : 0;
+
+    // A director is an agent only in the episodes that have one; elsewhere it has nothing to say and earns
+    // nothing, so the learner should not train on its row.
+    bool const directing = DirectorsActive(env);
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+        present[_seatCount + side] = directing ? 1 : 0;
+}
+
+bool Animus::Curriculum::StageScenario::DirectorsActive(Env const& env) const
+{
+    ArenaDefinition const& arena = Arena(env);
+    return HasDirectors() && arena.Directed && arena.DirectorLearned;
+}
+
+uint32 Animus::Curriculum::StageScenario::SideSeats(Env const& env, uint32 side,
+    std::array<uint32, TEAM_SEATS>& out) const
+{
+    out.fill(NO_SEAT);
+
+    uint32 count = 0;
+    for (uint32 seat = 0; seat < _seatCount && count < TEAM_SEATS; ++seat)
+        if (SideOf(env, seat) == side)
+            out[count++] = seat;
+
+    return count;
 }
 
 void Animus::Curriculum::StageScenario::ObserveSeat(Env& env, uint32 seatIndex, float* obs, uint8* mask)
@@ -1966,6 +2050,22 @@ void Animus::Curriculum::StageScenario::Reward(Env& env, float* reward)
 
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         reward[seat] = SeatReward(env, seat);
+
+    // A director is paid exactly what its side is paid, averaged: it has no body to score, and a team-level
+    // action is only worth what it did for the team. Any other reward would teach it to look busy.
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+    {
+        float total = 0.0f;
+        uint32 seats = 0;
+        for (uint32 seat = 0; seat < _seatCount && DirectorsActive(env); ++seat)
+            if (SideOf(env, seat) == side && Data(env).Seats[seat].L)
+            {
+                total += reward[seat];
+                ++seats;
+            }
+
+        reward[_seatCount + side] = seats ? total / float(seats) : 0.0f;
+    }
 
     for (Encounter* encounter : ActiveRewardOrder(env))
         encounter->AfterRewards(env);
@@ -2335,6 +2435,15 @@ void Animus::Curriculum::StageScenario::EpisodeInfo(Env const& env, float* info)
 {
     for (uint32 seat = 0; seat < _seatCount; ++seat)
         _info.Write(env, seat, info + seat * _spec.EpisodeInfoDim);
+
+    // A director has no character, so none of the per-seat columns mean anything for it. Its row is left zero,
+    // and `present` being one of those zeros is what keeps it out of the episode metrics; what the director did
+    // is reported by its side's seats (order_changes and the rest).
+    for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
+    {
+        float* row = info + (_seatCount + side) * _spec.EpisodeInfoDim;
+        std::fill(row, row + _spec.EpisodeInfoDim, 0.0f);
+    }
 }
 
 bool Animus::Curriculum::StageScenario::ScriptedAction(std::string const& policy, float const* obs,
@@ -2342,6 +2451,14 @@ bool Animus::Curriculum::StageScenario::ScriptedAction(std::string const& policy
 {
     if (_layouts.empty() || !Baselines::Supports(policy, _layouts.front()))
         return false;
+
+    // A director has no scripted baseline to fall back on: its layout carries no catalog for one to reason
+    // about, and what a baseline director would say is nothing at all, which is the hold action.
+    if (layoutIndex < _layouts.size() && _layouts[layoutIndex].Director)
+    {
+        action = int32(DirectorLayout::ACTION_HOLD);
+        return true;
+    }
 
     action = layoutIndex < _layouts.size() ? Baselines::Choose(policy, _layouts[layoutIndex], obs, mask) : 0;
     return true;

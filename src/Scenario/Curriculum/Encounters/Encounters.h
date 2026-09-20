@@ -22,6 +22,7 @@
 #include "BotSlot.h"
 #include "DifficultyLadder.h"
 #include "Encounter.h"
+#include "DirectorLayout.h"
 #include "Env.h"
 #include "ObjectGuid.h"
 #include "RewardLedger.h"
@@ -562,6 +563,15 @@ namespace Animus::Curriculum
         void Update(Env& env) override;
         void View(Env const& env, uint32 seat, SeatView& view) const override;
 
+        /// What the agent commanding `side` sees. Built from the seats and the enemy side, then offered to every
+        /// other active encounter (Encounter::ViewDirector) for the objective it alone knows.
+        void ViewSide(Env const& env, uint32 side, DirectorLayout::DirectorView& view) const;
+
+        /// One call from the learned director of `side`: the action names the single field of the standing order
+        /// it changes, and everything else keeps what it was. An action out of range, or one naming a slot that
+        /// is not there, changes nothing -- a masked action may still arrive.
+        void Call(Env& env, uint32 side, int32 action);
+
     private:
         struct SideOrder
         {
@@ -572,6 +582,7 @@ namespace Animus::Curriculum
             ObjectGuid Focus;
             uint32 Duty = NO_SEAT;              // the seat that owes the next interrupt or control
             uint32 Changes = 0;                 // how often the call moved, for the episode info
+            uint32 CalledStep = 0;              // the decision the order last changed on
         };
 
         struct EnvDirector
@@ -580,8 +591,13 @@ namespace Animus::Curriculum
             uint32 Steps = 0;
         };
 
-        /// One side's orders, from what its seats and the enemy's are doing.
+        /// One side's orders, from what its seats and the enemy's are doing. The scripted director; a learned one
+        /// is told what to say instead (Call).
         void Command(Env& env, uint32 side);
+        /// Whether the env's arena has the director learn rather than follow the script.
+        [[nodiscard]] bool Learned(Env const& env) const;
+        /// Note that the order changed, for order_changes and the director's own "how long has this stood".
+        void Changed(SideOrder& order, uint32 steps) const;
 
         std::vector<EnvDirector> _envs;
     };
