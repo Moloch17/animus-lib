@@ -41,6 +41,45 @@ Animus::Curriculum::DirectorEncounter::DirectorEncounter(StageScenario& scenario
 {
 }
 
+std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::DirectorEncounter::RewardTerms() const
+{
+    return { RewardTerm::OrderMatch };
+}
+
+void Animus::Curriculum::DirectorEncounter::BeforeRewards(Env& env)
+{
+    _envs[env.Index].Shaping.fill(0.0f);
+}
+
+float Animus::Curriculum::DirectorEncounter::ShapingPaid(Env const& env, uint32 seat) const
+{
+    return seat < MAX_SEATS ? _envs[env.Index].Shaping[seat] : 0.0f;
+}
+
+void Animus::Curriculum::DirectorEncounter::Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger)
+{
+    if (!bot || !bot->IsAlive() || seat >= MAX_SEATS)
+        return;
+
+    SideOrder const& order = _envs[env.Index].Sides[_scenario.SideOf(env, seat)];
+    if (!order.Focus)
+        return;
+
+    // Only a call the seat could be following: a dead target is not one, and neither is one it cannot reach in
+    // the slots it selects between.
+    Unit const* focus = ObjectAccessor::GetUnit(*bot, order.Focus);
+    if (!focus || !focus->IsAlive())
+        return;
+
+    Unit const* target = _scenario.SeatTarget(env, seat);
+    if (!target || target->GetGUID() != order.Focus)
+        return;
+
+    float const paid = _scenario.Tuning().Order.Focus * _scenario.DecisionScale();
+    ledger.Add(RewardTerm::OrderMatch, paid);
+    _envs[env.Index].Shaping[seat] = paid;
+}
+
 void Animus::Curriculum::DirectorEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
 {
     // What the director did, so a directed stage can be read against the undirected one it came from.

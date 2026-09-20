@@ -2053,6 +2053,11 @@ void Animus::Curriculum::StageScenario::Reward(Env& env, float* reward)
 
     // A director is paid exactly what its side is paid, averaged: it has no body to score, and a team-level
     // action is only worth what it did for the team. Any other reward would teach it to look busy.
+    //
+    // Less the compliance shaping its own orders earned those seats (RewardTerm::OrderMatch), which is the one
+    // part of their reward it can move without the fight going any better: a director that kept it would learn
+    // to call whoever its seats were already fighting. The seats are paid to follow; the director is paid only
+    // for what following achieved.
     for (uint32 side = 0; side < TEAM_COUNT && HasDirectors(); ++side)
     {
         float total = 0.0f;
@@ -2060,7 +2065,7 @@ void Animus::Curriculum::StageScenario::Reward(Env& env, float* reward)
         for (uint32 seat = 0; seat < _seatCount && DirectorsActive(env); ++seat)
             if (SideOf(env, seat) == side && Data(env).Seats[seat].L)
             {
-                total += reward[seat];
+                total += reward[seat] - (_director ? _director->ShapingPaid(env, seat) : 0.0f);
                 ++seats;
             }
 

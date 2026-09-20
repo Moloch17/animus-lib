@@ -558,10 +558,19 @@ namespace Animus::Curriculum
     public:
         DirectorEncounter(StageScenario& scenario, uint32 envs);
 
+        [[nodiscard]] std::vector<RewardTerm> RewardTerms() const override;
         void AddEpisodeInfo(EpisodeInfoTable& table) override;
         void ResetEpisode(Env& env) override;
         void Update(Env& env) override;
         void View(Env const& env, uint32 seat, SeatView& view) const override;
+        void BeforeRewards(Env& env) override;
+        void Reward(Env& env, uint32 seat, Player* bot, RewardLedger& ledger) override;
+
+        /// What compliance shaping this seat was paid this decision (RewardTerm::OrderMatch). The director's own
+        /// reward takes it back out: it is paid the mean of its side's rewards, and a director that could earn
+        /// from the shaping would learn to call whoever its seats were already fighting -- to look busy rather
+        /// than to lead.
+        [[nodiscard]] float ShapingPaid(Env const& env, uint32 seat) const;
 
         /// What the agent commanding `side` sees. Built from the seats and the enemy side, then offered to every
         /// other active encounter (Encounter::ViewDirector) for the objective it alone knows.
@@ -589,6 +598,8 @@ namespace Animus::Curriculum
         {
             std::array<SideOrder, TEAM_COUNT> Sides;
             uint32 Steps = 0;
+            /// Per seat, the shaping paid this decision; cleared before every decision's rewards.
+            std::array<float, MAX_SEATS> Shaping{};
         };
 
         /// One side's orders, from what its seats and the enemy's are doing. The scripted director; a learned one
