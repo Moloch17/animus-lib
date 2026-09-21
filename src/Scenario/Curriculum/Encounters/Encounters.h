@@ -98,6 +98,7 @@ namespace Animus::Curriculum
         void BeforeRebuild(Env& env) override;
         bool Build(Env& env, Map* map, uint8 level) override;
         void Update(Env& env) override;
+        bool SelectTarget(Env const& env, uint32 seat, Unit*& target) override;
         [[nodiscard]] bool IsTerminal(Env const& env) const override;
 
     private:
