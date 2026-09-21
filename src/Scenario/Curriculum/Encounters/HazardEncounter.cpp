@@ -130,14 +130,23 @@ bool Animus::Curriculum::HazardEncounter::IsTerminal(Env const& env) const
     if (_scenario.Arena(env).Against != Opposition::Hazards)
         return false;
 
-    // Nothing to clear, so the episode runs its length. It ends early only when there is no one left to burn.
+    // Nothing to clear, so the episode runs its length. It ends early only when every seat that exists is dead.
+    //
+    // "Exists" is the load-bearing word. Asking only whether anything is alive says yes-it-is-over in the moment
+    // before the seats are built, which ended all 128 episodes of the first run at once, none of them having taken
+    // a single decision. A seat with no bot behind it has not died; it has not started.
+    bool anySeat = false;
     for (uint32 seat = 0; seat < uint32(env.Bots.size()); ++seat)
     {
         Player const* bot = _scenario.SeatBot(env, seat);
-        if (bot && bot->IsAlive())
+        if (!bot)
+            continue;
+
+        anySeat = true;
+        if (bot->IsAlive())
             return false;
     }
-    return true;
+    return anySeat;
 }
 
 void Animus::Curriculum::HazardEncounter::Clear(Env& env)
