@@ -103,8 +103,9 @@ namespace Animus::Curriculum
     private:
         struct EnvHazards
         {
-            std::vector<ObjectGuid> Live;   // patches still burning, so an episode does not leak fire into the next
-            uint32 Placed = 0;              // this episode, for the episode info
+            ObjectGuid Emitter;             // the invisible trigger that lays the ground
+            uint32 Spell = 0;               // the persistent area aura it casts, drawn per episode for the level
+            uint32 Placed = 0;              // patches this episode, for the episode info
             uint32 NextMs = 0;              // episode time the next patch is due
         };
 

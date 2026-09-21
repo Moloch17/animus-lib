@@ -19,10 +19,13 @@
 #include "Encounters.h"
 #include "Env.h"
 #include "EpisodeInfoTable.h"
-#include "GameObject.h"
+#include "Creature.h"
+#include "DynamicObject.h"
 #include "Log.h"
 #include "Map.h"
 #include "ObjectAccessor.h"
+#include "Opponents.h"
+#include "TemporarySummon.h"
 #include "Player.h"
 #include "StageScenario.h"
 
@@ -30,10 +33,17 @@
  * A hazard drill with nothing to fight: fire lands under the seat every few seconds and stays, so the only thing
  * that hurts is standing still.
  *
- * Why a trap gameobject rather than a caster's ground effect. Encoding::FindNearestHazard reads two things as
- * hazards: a DynamicObject, which it takes only from a caster hostile to the seat, and a GAMEOBJECT_TYPE_TRAP,
- * which it takes from nobody at all. The second is the only ground hazard in the game that needs no unit behind
- * it, and Map::SummonGameObject needs no owner to place one, so a stage can have fire without an enemy.
+ * Why an invisible caster rather than a trap gameobject. The first build of this used GAMEOBJECT_TYPE_TRAP, which
+ * is the one ground hazard that needs no unit behind it, and it burned the seats and taught them nothing: the two
+ * halves of the hazard machinery read different things. Encoding::FindNearestHazard, which the observation uses,
+ * accepts a trap. Encoding::StandingInHazards, which the charge uses, counts DYNOBJ_AURA_TYPE auras and nothing
+ * else. A trap leaves no such aura, so hazard_seconds, hazard_damage and reward_hazard all stayed at zero while
+ * health_left fell to 0.68 -- damage with no signal, which is worse than no drill.
+ *
+ * So the fire is a real persistent area aura, cast by a World Invisible Trigger that is hostile, immune,
+ * unselectable and unattackable. There is nothing to fight and nothing to target, but the DynamicObject it leaves
+ * is the same one the rest of the curriculum's hazards leave, so every sensing and reward path works unchanged.
+ * The spells are the ones the world's own hazard casters use (OpponentPool::RandomHazardSpell).
  *
  * Why under the seat. A hazard drill whose fire sits in fixed places teaches nothing: every reward in an episode
  * with no enemy is a penalty (RewardTerm::Hazard is charged and never paid), so a policy would learn to stand in
@@ -47,19 +57,21 @@
 
 namespace
 {
-    /// "Blaze" (gameobject_template 194010): trap diameter 12, so a radius of 6 yards, firing spell 23485. Picked
-    /// over the wider Roaring Flame (20) so that stepping out is a step rather than a journey, and over the
-    /// narrower Inferno (10) so that standing still is unambiguously wrong.
-    constexpr uint32 HAZARD_ENTRY = 194010;
+    /// The stock invisible trigger: unselectable, unattackable and immune by its template's flags, so it can hold
+    /// a hostile faction without ever becoming something to fight.
+    constexpr uint32 EMITTER_ENTRY = 12999;
+
+    /// Hostile to players, so Encoding::FindNearestHazard reads what it casts as a hazard rather than as somewhere
+    /// friendly to stand (it takes a DynamicObject only from a caster the seat is not friendly to).
+    constexpr uint32 EMITTER_FACTION = 14;
 
     /// A new patch under each living seat this often. At the 250 ms decision that is a patch every ten decisions:
     /// long enough to have moved out deliberately rather than by accident, short enough that a stationary seat is
     /// always standing in something.
     constexpr uint32 PLACE_EVERY_MS = 2500;
 
-    /// How long one lasts. Longer than the interval, so the ground fills in behind a seat that keeps moving and
-    /// the drill is about where to go rather than only about leaving.
-    constexpr uint32 PATCH_SECONDS = 8;
+    /// How long the emitter lives; the patches it lays expire on their own spells' duration.
+    constexpr uint32 EMITTER_SECONDS = 600;
 }
 
 Animus::Curriculum::HazardEncounter::HazardEncounter(StageScenario& scenario, uint32 envs)
@@ -85,12 +97,37 @@ void Animus::Curriculum::HazardEncounter::BeforeRebuild(Env& env)
     Clear(env);
 }
 
-bool Animus::Curriculum::HazardEncounter::Build(Env& env, Map* /*map*/, uint8 /*level*/)
+bool Animus::Curriculum::HazardEncounter::Build(Env& env, Map* map, uint8 level)
 {
-    // Nothing to spawn: the fire arrives on the clock, and the first patch lands one interval in so that a seat
-    // is not already standing in one on its first decision.
     EnvHazards& state = _envs[env.Index];
+    // The first patch lands one interval in, so a seat is never already standing in one on its first decision.
     state.NextMs = PLACE_EVERY_MS;
+    state.Spell = Opponents::OpponentPool::Instance().RandomHazardSpell(level);
+    if (!state.Spell)
+    {
+        LOG_ERROR("module.animus", "{}: the world has no hazard spell to cast; env {} has nothing to avoid",
+            _scenario.Name(), env.Index);
+        return false;
+    }
+
+    Player* first = _scenario.SeatBot(env, 0);
+    if (!map || !first)
+        return false;
+
+    // One emitter for the env, standing where the seats start. It never moves and never needs to: a persistent
+    // area aura is cast at a point, not at a target, so range is the only thing that matters and the arena is
+    // small. Hostile so its ground reads as a hazard, and immune and unselectable so it is not a fight.
+    TempSummon* emitter = map->SummonCreature(EMITTER_ENTRY, *first, nullptr, EMITTER_SECONDS * IN_MILLISECONDS);
+    if (!emitter)
+        return false;
+
+    emitter->SetFaction(EMITTER_FACTION);
+    emitter->SetUnitFlag(UnitFlags(UNIT_FLAG_NOT_SELECTABLE | UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_IMMUNE_TO_PC
+        | UNIT_FLAG_IMMUNE_TO_NPC));
+    emitter->SetImmuneToAll(true);
+    emitter->SetReactState(REACT_PASSIVE);
+    emitter->SetVisible(false);
+    state.Emitter = emitter->GetGUID();
     return true;
 }
 
@@ -104,7 +141,8 @@ void Animus::Curriculum::HazardEncounter::Update(Env& env)
         return;
 
     Map* map = env.FindMap();
-    if (!map)
+    Creature* emitter = map ? map->GetCreature(state.Emitter) : nullptr;
+    if (!emitter)
         return;
 
     state.NextMs = env.EpisodeElapsedMs + PLACE_EVERY_MS;
@@ -114,14 +152,10 @@ void Animus::Curriculum::HazardEncounter::Update(Env& env)
         if (!bot || !bot->IsAlive())
             continue;
 
-        // Under the seat, where it is standing now. The trap despawns itself after PATCH_SECONDS
-        // (Map::SummonGameObject takes seconds and marks the object temporary), but the guids are kept so an
-        // episode that ends early does not leave its fire burning into the next one.
-        if (GameObject* fire = map->SummonGameObject(HAZARD_ENTRY, *bot, 0.0f, 0.0f, 0.0f, 0.0f, PATCH_SECONDS))
-        {
-            state.Live.push_back(fire->GetGUID());
-            ++state.Placed;
-        }
+        // Under the seat, where it is standing now. Triggered, so nothing about the emitter's own state -- line
+        // of sight, facing, power, a global cooldown -- can stop the fire arriving.
+        emitter->CastSpell(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), state.Spell, true);
+        ++state.Placed;
     }
 }
 
@@ -152,11 +186,14 @@ bool Animus::Curriculum::HazardEncounter::IsTerminal(Env const& env) const
 void Animus::Curriculum::HazardEncounter::Clear(Env& env)
 {
     EnvHazards& state = _envs[env.Index];
-    Map* map = env.FindMap();
-    for (ObjectGuid const& guid : state.Live)
-        if (map)
-            if (GameObject* fire = map->GetGameObject(guid))
-                fire->Delete();
+    if (Map* map = env.FindMap())
+        if (Creature* emitter = map->GetCreature(state.Emitter))
+        {
+            // Its ground goes with it: a DynamicObject belongs to its caster, so nothing burns into the next
+            // episode and no seat starts one standing in the last one's fire.
+            emitter->RemoveAllDynObjects();
+            emitter->DespawnOrUnsummon();
+        }
 
-    state.Live.clear();
+    state.Emitter.Clear();
 }
