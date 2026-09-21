@@ -37,12 +37,12 @@ Animus::Curriculum::DifficultyLadder::Pick Animus::Curriculum::DifficultyLadder:
         pick.Tier = std::min(_scenario.ForcedTier(), maxTier);
     else if (env.EpisodeSeedIndex != NO_EPISODE_SEED)
     {
-        // Seed i plays class i mod layouts (StageScenario::DrawLayout), and rung (i / layouts) mod rungs, so every
-        // class meets every rung: i mod rungs ties each class to one rung when the two counts share a factor
-        // (6 pack rungs and 10 classes). The role is not part of the spread -- an evaluation draws it with the
-        // spec -- but it is part of what a rung is recorded against, so the two do not fight over one number.
-        uint32 const layouts = std::max<uint32>(1, uint32(_scenario.Layouts().size()));
-        pick.Tier = (env.EpisodeSeedIndex / layouts) % (maxTier + 1);
+        // Seed i plays (class, role) pair i mod pairs (StageScenario::DrawCasting), and rung (i / pairs) mod
+        // rungs, so every pair meets every rung. It has to be the pair count and not the layout count: dividing by
+        // ten classes while the seeds cycle through eighteen pairs leaves the two out of step, and a pair would
+        // wait far longer than it should to see a rung -- i mod rungs would otherwise tie each pair to one.
+        uint32 const pairs = std::max<uint32>(1, _scenario.CastingCount());
+        pick.Tier = (env.EpisodeSeedIndex / pairs) % (maxTier + 1);
     }
     else
     {

@@ -177,22 +177,24 @@ namespace
             }
         }
 
-        if (best == TalentBuilder::TREE_COUNT)
-            return nullptr;
-
+        // Below level 10 nothing has been spent and every tree reads 0. The role is always set, so fall back to a
+        // spec that plays it: a level 5 mage still fights from range, and the spec one-hot this replaced did not
+        // wait for talents either.
         Role const role = RoleOf(row);
         SpecProfile const* fallback = nullptr;
         for (SpecProfile const& spec : layout.Profile->Specs)
         {
-            if (spec.TabPage != best)
-                continue;
-            if (spec.PlayRole == role)
+            bool const tree = best != TalentBuilder::TREE_COUNT && spec.TabPage == best;
+            if (tree && spec.PlayRole == role)
                 return &spec;
-            if (!fallback)
+            if (!fallback && spec.PlayRole == role)
                 fallback = &spec;
         }
 
-        return fallback;
+        if (fallback)
+            return fallback;
+
+        return layout.Profile->Specs.empty() ? nullptr : &layout.Profile->Specs.front();
     }
 
     /// Whether the seat's spec fights from range (hunters, casters, healers).

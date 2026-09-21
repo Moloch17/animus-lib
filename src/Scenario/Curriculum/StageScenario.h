@@ -193,6 +193,10 @@ namespace Animus::Curriculum
         /// Every class/role layout of the run, by Layout::Index (the index AgentLayouts reports).
         [[nodiscard]] std::vector<Layout> const& Layouts() const { return _layouts; }
 
+        /// How many (class, role) pairs the run can field, which is what an evaluation spreads its seeds over.
+        /// The difficulty ladder divides by the same number, so every pair meets every rung.
+        [[nodiscard]] uint32 CastingCount() const { return uint32(Castings(std::nullopt).size()); }
+
         /// Play only arena `arena` (an index into the stage's arenas) from the next reset on; NO_ARENA draws by weight
         /// again. The stage viewer uses it to show one situation of a mixed stage.
         void ForceArena(uint32 arena) { _forcedArena = arena; }
