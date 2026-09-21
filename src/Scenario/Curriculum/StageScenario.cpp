@@ -346,8 +346,9 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     if (_stage.AnyArena(hasCreature))
         creature = add(std::make_unique<CreatureEncounter>(*this, envs));
     // Nothing to fight and nothing to order: it only puts fire on the ground, so it can go anywhere in the order.
+    Encounter* hazards = nullptr;
     if (_stage.AnyArena(hasHazards))
-        add(std::make_unique<HazardEncounter>(*this, envs));
+        hazards = add(std::make_unique<HazardEncounter>(*this, envs));
     // After the owner and the pulls: ambushers find the owner and take the slots the pull leaves.
     if (_stage.AnyArena(hasAmbush))
         ambush = add(std::make_unique<AmbushEncounter>(*this, envs));
@@ -381,6 +382,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
                 || (encounter == _party && arena.PartyGroup) || (encounter == pulls && hasPulls(arena))
                 || (encounter == creature && hasCreature(arena)) || (encounter == ambush && hasAmbush(arena))
                 || (encounter == travel && hasTravel(arena)) || (encounter == flag && hasFlag(arena))
+                || (encounter == hazards && hasHazards(arena))
                 || (encounter == director && directed(arena));
         };
 
