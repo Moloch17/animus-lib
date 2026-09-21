@@ -326,6 +326,7 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
     };
     auto const hasPulls = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Pulls; };
     auto const hasCreature = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Creature; };
+    auto const hasHazards = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Hazards; };
     auto const hasAmbush = [](ArenaDefinition const& arena) { return arena.Ambushers > 0; };
     auto const hasTravel = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Travel; };
     auto const hasFlag = [](ArenaDefinition const& arena) { return arena.Against == Opposition::Flag; };
@@ -344,6 +345,9 @@ Animus::Curriculum::StageScenario::StageScenario(StageSettings const& settings, 
         pulls = add(std::make_unique<PullsEncounter>(*this, envs));
     if (_stage.AnyArena(hasCreature))
         creature = add(std::make_unique<CreatureEncounter>(*this, envs));
+    // Nothing to fight and nothing to order: it only puts fire on the ground, so it can go anywhere in the order.
+    if (_stage.AnyArena(hasHazards))
+        add(std::make_unique<HazardEncounter>(*this, envs));
     // After the owner and the pulls: ambushers find the owner and take the slots the pull leaves.
     if (_stage.AnyArena(hasAmbush))
         ambush = add(std::make_unique<AmbushEncounter>(*this, envs));
