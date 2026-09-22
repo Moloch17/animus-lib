@@ -574,6 +574,17 @@ namespace Animus::Curriculum
             /// is how the distribution under that ceiling stays visible rather than assumed.
             float TripShare = 0.0f;
             float LastDistance = -1.0f;         // shaping: yards at the last reward; < 0 = none yet
+            /// The closest the seat ever got to the objective this episode, and how far into the clock that was.
+            ///
+            /// objective_distance_at_end says where a failure stopped, which turns out to say very little. A seat
+            /// that touched seven yards forty seconds in and then wandered off has a steering fault; one that
+            /// never closed past fifty has a routing fault, or was sent somewhere it cannot reach. Those are
+            /// different bugs with different fixes and the end distance cannot tell them apart -- both of them
+            /// finish sixty yards out.
+            float Nearest = -1.0f;
+            uint32 NearestMs = 0;
+            float NearestX = 0.0f;              // and where the seat was standing when it was that close
+            float NearestY = 0.0f;
             /// Yards the seat has actually covered, summed decision by decision -- as against WalkDistance, which
             /// is the length of the path it was *given* and says nothing about whether the legs turned. A seat
             /// that times out 96 yards short of a 106 yard trip either never moved or moved in circles, and only

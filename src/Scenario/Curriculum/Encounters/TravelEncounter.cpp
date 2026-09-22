@@ -134,6 +134,26 @@ void Animus::Curriculum::TravelEncounter::AddEpisodeInfo(EpisodeInfoTable& table
     // first says what the arena offered, the second what the seat did with it -- and a water arena where
     // swim_seconds stays at zero is either a policy that always goes round or spawn points with no water in
     // reach, which the two columns together tell apart.
+    // Reported raw, for arrivals as well as failures, and deliberately without the sentinel that
+    // objective_distance_at_end uses: these are read per episode rather than as a mean, and the whole question
+    // is the shape of the distribution among the episodes that did not make it.
+    table.Add("objective_distance_nearest", [this](Env const& env, uint32)
+    {
+        EnvTravel const& travel = _envs[env.Index];
+        return travel.HasObjective && travel.Nearest >= 0.0f ? travel.Nearest : 0.0f;
+    });
+    table.Add("nearest_at_seconds", [this](Env const& env, uint32)
+    {
+        return float(_envs[env.Index].NearestMs) / 1000.0f;
+    });
+    // Coordinates, in a table of measurements, for one reason: to find out whether the episodes that fail all
+    // fail in the same places. A stall scattered across the world is a rule that is wrong everywhere; a stall
+    // that repeats at a handful of points is a handful of bad places, and the two want completely different
+    // fixes. These are what `forge rays` is then pointed at.
+    table.Add("nearest_x", [this](Env const& env, uint32) { return _envs[env.Index].NearestX; });
+    table.Add("nearest_y", [this](Env const& env, uint32) { return _envs[env.Index].NearestY; });
+    table.Add("objective_x", [this](Env const& env, uint32) { return _envs[env.Index].Objective.GetPositionX(); });
+    table.Add("objective_y", [this](Env const& env, uint32) { return _envs[env.Index].Objective.GetPositionY(); });
     table.Add("crossing", [this](Env const& env, uint32) { return _envs[env.Index].Crossing ? 1.0f : 0.0f; });
     table.Add("swim_seconds", [this](Env const& env, uint32)
     {
@@ -397,6 +417,8 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     travel.MarkMs = 0;
     travel.MarkTravelled = 0.0f;
     travel.MarkDistance = -1.0f;
+    travel.Nearest = -1.0f;
+    travel.NearestMs = 0;
     travel.MoveRate = 0.0f;
     travel.CloseRate = 0.0f;
     // The clock this arena actually runs, not the stage's default: `open` and `broken` do not have to agree, and
@@ -548,6 +570,15 @@ void Animus::Curriculum::TravelEncounter::Reward(Env& env, uint32 seatIndex, Pla
     if (travel.LastDistance >= 0.0f && !travel.Arrived)
         ledger.Add(RewardTerm::Progress, tuning.Progress * (travel.LastDistance - distance) / 100.0f);
     travel.LastDistance = distance;
+
+    // The high-water mark of the trip, kept whether the seat arrives or not.
+    if (travel.Nearest < 0.0f || distance < travel.Nearest)
+    {
+        travel.Nearest = distance;
+        travel.NearestMs = env.EpisodeElapsedMs;
+        travel.NearestX = bot->GetPositionX();
+        travel.NearestY = bot->GetPositionY();
+    }
 
     // Room to move, charged by the second like a hazard and capped the same way. A seat scraping a wall is not
     // doing anything wrong in open country -- there is nothing out there to scrape -- but it is how a seat wedges
