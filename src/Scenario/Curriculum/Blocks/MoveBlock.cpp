@@ -494,12 +494,30 @@ namespace
             if (dtStatusSucceed(query->findDistanceToWall(startRef, at, MoveBlock::CLEARANCE_RANGE, &filter,
                 &distance, hit, normal)))
             {
-                probe->Clearance = std::clamp(distance / MoveBlock::CLEARANCE_RANGE, 0.0f, 1.0f);
+                if (std::isfinite(distance))
+                    probe->Clearance = std::clamp(distance / MoveBlock::CLEARANCE_RANGE, 0.0f, 1.0f);
+
                 // hitNormal is normalize(centre - hit): it already points from the wall back at the seat, which
                 // is the way out. Detour's axes are {y, z, x}, so the world components are [2] and [0].
-                float const away = std::atan2(normal[0], normal[2]) - facing;
-                probe->ClearanceSin = std::sin(away);
-                probe->ClearanceCos = std::cos(away);
+                //
+                // And it is not always a direction. Detour builds that vector by subtracting the hit from the
+                // centre and normalising in place, dividing by the vector's own length -- so a seat standing
+                // exactly on an edge, where the hit *is* the centre, normalises a zero vector and gets three
+                // NaNs. atan2 carries them, sin and cos carry them, and two NaN observation planes reach the
+                // networks, which return a NaN logit, which torch.multinomial reports as a probability tensor
+                // containing inf or nan, naming nothing. A seat on an edge is not rare: it is a doorway.
+                //
+                // There is no direction out of a point that is already on the edge, so the honest reading is
+                // the one the probe starts with -- no direction at all -- and the clearance distance beside it
+                // still says the seat is against something.
+                float const outX = normal[2];
+                float const outY = normal[0];
+                if (std::isfinite(outX) && std::isfinite(outY) && outX * outX + outY * outY > 1e-6f)
+                {
+                    float const away = std::atan2(outY, outX) - facing;
+                    probe->ClearanceSin = std::sin(away);
+                    probe->ClearanceCos = std::cos(away);
+                }
             }
         }
 
@@ -781,7 +799,9 @@ std::string Animus::Curriculum::MoveBlock::RayReport(Map* map, float x, float y,
     if (dtStatusSucceed(query->findDistanceToWall(startRef, at, CLEARANCE_RANGE, &filter, &distance, hit,
         normal)))
     {
-        float const away = std::atan2(normal[0], normal[2]);
+        bool const directed = std::isfinite(normal[0]) && std::isfinite(normal[2])
+            && normal[0] * normal[0] + normal[2] * normal[2] > 1e-6f;
+        float const away = directed ? std::atan2(normal[0], normal[2]) : 0.0f;
         out << "\n  clearance    " << distance << " yd of " << CLEARANCE_RANGE
             << ", the way out bears " << (away * 180.0f / float(M_PI)) << " deg world, "
             << (std::atan2(std::sin(away - facing), std::cos(away - facing)) * 180.0f / float(M_PI))
