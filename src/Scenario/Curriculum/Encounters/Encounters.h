@@ -552,9 +552,16 @@ namespace Animus::Curriculum
         /// be covered in that long at the speed this character actually has. Reachable and reachable-in-time are
         /// different claims, and only the first was ever checked. 0 means no budget, for a placement that is a
         /// feature of the arena rather than a trip against a clock.
+        ///
+        /// `shortcut`, if given, reports that the accepted place's path was not a path. PathGenerator answers
+        /// PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH on a missing tile, a hole in the mesh, or a start too far
+        /// from it -- and what it returns then is BuildShortcut's two-point straight line, whose length is the
+        /// distance as the crow flies. Tested for PATHFIND_NORMAL alone, as this function has always tested it,
+        /// that reads as a clean route with a detour of exactly 1.0, and the feasibility budget it is measured
+        /// against means nothing. Opponents::Walkable has always checked the flag; here it was missed.
         static bool FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying, Position& place,
             float budgetSeconds, float* walk = nullptr, bool across = false, float* dry = nullptr,
-            bool indoors = false);
+            bool indoors = false, bool* shortcut = nullptr);
         /// Whether the straight line from `bot` to (x, y) passes through water.
         static bool CrossesWater(Player const* bot, Map* map, Position const& place, float x, float y);
 
@@ -581,6 +588,10 @@ namespace Animus::Curriculum
             /// never closed past fifty has a routing fault, or was sent somewhere it cannot reach. Those are
             /// different bugs with different fixes and the end distance cannot tell them apart -- both of them
             /// finish sixty yards out.
+            /// The trip was measured against a straight line rather than a route -- see FindPlace. Reported and
+            /// not yet acted on: the first question is how many episodes this is.
+            bool Shortcut = false;
+            bool DryShortcut = false;
             float Nearest = -1.0f;
             uint32 NearestMs = 0;
             float NearestX = 0.0f;              // and where the seat was standing when it was that close

@@ -154,6 +154,16 @@ void Animus::Curriculum::TravelEncounter::AddEpisodeInfo(EpisodeInfoTable& table
     table.Add("nearest_y", [this](Env const& env, uint32) { return _envs[env.Index].NearestY; });
     table.Add("objective_x", [this](Env const& env, uint32) { return _envs[env.Index].Objective.GetPositionX(); });
     table.Add("objective_y", [this](Env const& env, uint32) { return _envs[env.Index].Objective.GetPositionY(); });
+    // How often the trip was measured against a straight line instead of a route. A number above zero here
+    // means some share of every arrival rate ever reported was judged on a trip that was never checked.
+    table.Add("route_shortcut", [this](Env const& env, uint32)
+    {
+        return _envs[env.Index].Shortcut ? 1.0f : 0.0f;
+    });
+    table.Add("dry_shortcut", [this](Env const& env, uint32)
+    {
+        return _envs[env.Index].DryShortcut ? 1.0f : 0.0f;
+    });
     table.Add("crossing", [this](Env const& env, uint32) { return _envs[env.Index].Crossing ? 1.0f : 0.0f; });
     table.Add("swim_seconds", [this](Env const& env, uint32)
     {
@@ -238,7 +248,7 @@ void Animus::Curriculum::TravelEncounter::ResetEpisode(Env& env)
 }
 
 bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying,
-    Position& place, float budgetSeconds, float* walk, bool across, float* dry, bool indoors)
+    Position& place, float budgetSeconds, float* walk, bool across, float* dry, bool indoors, bool* shortcut)
 {
     // What the seat can actually cover in the time it has. Reachability was the only test until now -- a path of
     // type PATHFIND_NORMAL, no longer than MAX_PATH_DETOUR times the straight line -- and reachable is not the
@@ -308,6 +318,23 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
             if (!path.CalculatePath(x, y, z) || !(path.GetPathType() & PATHFIND_NORMAL))
                 continue;
 
+            // PATHFIND_NORMAL on its own is not a route. A missing tile, a hole in the mesh, or a start too far
+            // from it all make PathGenerator fall back to BuildShortcut and answer
+            // PATHFIND_NORMAL | PATHFIND_NOT_USING_PATH -- two points in a straight line, whose length is the
+            // distance as the crow flies. Every check below then measures a trip that was never routed: the
+            // detour is exactly 1.0 by construction and the feasibility budget is meaningless.
+            //
+            // It was 11.08% of stage1_move's evaluation episodes, and they arrived 0.4934 against 0.8567 for
+            // the episodes that had a real route -- 27.94% of the `open` arena, 0.71% of `broken`, none of
+            // `water`. So better than a tenth of every arrival rate this stage has ever reported was measured on
+            // trips that were never checked, which is most of the distance between the gate and 1.0.
+            //
+            // Rejected now. There is a retry above this: a spawn point no objective can be found from is
+            // abandoned for another (StageScenario's SPAWN_ATTEMPTS), so refusing here costs an attempt rather
+            // than an episode, and a spawn point that is off the mesh entirely simply stops being used.
+            if (path.GetPathType() & PATHFIND_NOT_USING_PATH)
+                continue;
+
             walked = path.getPathLength();
 
             // A water arena wants the opposite of what every other one wants. Elsewhere a long detour means the
@@ -327,7 +354,8 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
 
                 PathGenerator dry(bot);
                 dry.SetIncludeFlags(NAV_GROUND);
-                if (!dry.CalculatePath(x, y, z) || !(dry.GetPathType() & PATHFIND_NORMAL))
+                if (!dry.CalculatePath(x, y, z) || !(dry.GetPathType() & PATHFIND_NORMAL)
+                    || (dry.GetPathType() & PATHFIND_NOT_USING_PATH))
                     continue;                      // no dry route: getting in is not a choice, it is the only way
 
                 dryWalk = dry.getPathLength();
@@ -353,6 +381,8 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
             *walk = walked;
         if (dry)
             *dry = dryWalk;
+        if (shortcut)
+            *shortcut = false;      // nothing that got here was one; the column stays as the regression alarm
         return true;
     }
 
@@ -426,10 +456,11 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     // asked to make every time.
     float const budget = float(env.EpisodeLengthMs) / 1000.0f * FEASIBLE_SHARE;
     if (arena.Water
-        && FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, true, &travel.DryDistance))
+        && FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, true, &travel.DryDistance,
+            false, &travel.Shortcut))
         travel.Crossing = true;
     else if (!FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, false, nullptr,
-        arena.Indoors))
+        arena.Indoors, &travel.Shortcut))
         return false;
 
     // What the way round costs on foot, for every arena rather than only the ones built around a crossing:
@@ -442,7 +473,13 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
         dry.SetIncludeFlags(NAV_GROUND);
         if (dry.CalculatePath(travel.Objective.GetPositionX(), travel.Objective.GetPositionY(),
             travel.Objective.GetPositionZ()) && (dry.GetPathType() & PATHFIND_NORMAL))
-            travel.DryDistance = dry.getPathLength();
+        {
+            // Same caveat as FindPlace's: a shortcut answers PATHFIND_NORMAL too, and DryDistance is then the
+            // straight line -- which makes OBS_DETOUR exactly 1.0 and tells the seat there is nothing in the way.
+            travel.DryShortcut = (dry.GetPathType() & PATHFIND_NOT_USING_PATH) != 0;
+            if (!travel.DryShortcut)
+                travel.DryDistance = dry.getPathLength();
+        }
     }
 
     travel.HasObjective = true;
