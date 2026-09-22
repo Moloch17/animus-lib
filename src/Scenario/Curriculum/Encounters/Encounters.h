@@ -553,13 +553,15 @@ namespace Animus::Curriculum
         /// different claims, and only the first was ever checked. 0 means no budget, for a placement that is a
         /// feature of the arena rather than a trip against a clock.
         static bool FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying, Position& place,
-            float budgetSeconds, float* walk = nullptr, bool across = false, float* dry = nullptr);
+            float budgetSeconds, float* walk = nullptr, bool across = false, float* dry = nullptr,
+            bool indoors = false);
         /// Whether the straight line from `bot` to (x, y) passes through water.
         static bool CrossesWater(Player const* bot, Map* map, Position const& place, float x, float y);
 
     private:
         struct EnvTravel
         {
+            bool Indoors = false;           // the arena is inside a building: placement and arrival both change
             bool Crossing = false;          // the objective was placed across water (a water arena that found one)
             float DryDistance = 0.0f;       // yards of the way round on foot, water excluded; 0 = no dry route
             uint32 SwimMs = 0;              // how long the seat has been in the water this episode

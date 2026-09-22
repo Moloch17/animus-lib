@@ -232,6 +232,55 @@ namespace
             .HeldOutSpawnPoints = KalimdorControl(),
         });
 
+        // Inside, where the walls are close enough to matter.
+        //
+        // Named 1b rather than renumbering twenty-two scenarios behind it: stage numbers are cosmetic here --
+        // nothing parses them and training order comes from AnimusForge.Queue -- and the name says where it
+        // belongs without the churn.
+        //
+        // NOT in the default queue. The spawn points below are areatrigger centres straight out of
+        // areatrigger_tavern, which is the table that names and bounds every inn in the world; they have not yet
+        // been stood on. Some will be doorways or yards rather than rooms. Train it by name
+        // (`forge start stage1b_indoor`) and read the build failures before trusting it with a queue slot.
+        stages.push_back({
+            .Name = "stage1b_indoor",
+            .Suffix = "_indoor",
+            .Extends = "stage1_move",
+            .Summary = "a place 8-40 yd away inside a building: read the walls, keep off them, and find the door",
+            .Blocks = { Core, Move, Travel, Duel },
+            .Arenas = {
+                // Short trips and a short clock: an inn is twenty to thirty yards across, so an outdoor arena's
+                // first step would already be through an outside wall.
+                { .Name = "rooms", .Against = Opposition::Travel, .EpisodeSeconds = 90,
+                    .OnFoot = true, .Indoors = true },
+            },
+            .InDefaultQueue = false,
+            .MapId = MAP_KALIMDOR,
+            // Every inn on Kalimdor that areatrigger_tavern names, spread across regions for the same reason the
+            // ground list is: a policy that sees four rooms learns four rooms.
+            .SpawnPoints = {
+                { -3182.4f, -2920.8f, 33.6f, 0.0f },   // Brackenwall Village
+                { -4622.3f, -3172.1f, 34.8f, 0.0f },   // Mudsprocket
+                { 2756.6f, -423.1f, 119.4f, 0.0f },    // Astranaar
+                { 6410.0f, 527.0f, 14.1f, 0.0f },      // Auberdine
+                { -405.3f, -2645.3f, 112.0f, 0.0f },   // The Barrens
+                { -1051.4f, -3653.8f, 31.1f, 0.0f },   // The Barrens
+                { -2372.5f, -1991.6f, 121.0f, 0.0f },  // The Barrens
+                { 341.4f, -4684.7f, 30.9f, 0.0f },     // Durotar
+                { -2366.7f, -346.0f, -1.3f, 0.0f },    // Mulgore
+                { 898.5f, 922.7f, 126.8f, 0.0f },      // Stonetalon Mountains
+                { -4370.8f, 3289.1f, 23.8f, 0.0f },    // Feralas
+                { -5477.9f, -2460.3f, 89.3f, 0.0f },   // Thousand Needles
+            },
+            // Rooms no training episode stands in, for the same reason every other stage holds ground back.
+            .HeldOutSpawnPoints = {
+                { -3615.5f, -4467.3f, 24.3f, 0.0f },   // Theramore Isle
+                { 245.6f, 1252.0f, 210.1f, 0.0f },     // Desolace
+                { 9809.0f, 959.2f, 1315.3f, 0.0f },    // Dolanaar
+                { -7162.1f, -3845.9f, 8.8f, 0.0f },    // Tanaris
+            },
+        });
+
         // Something on the ground, in every pull. Hazards exist already -- the pack ladder draws a hazard caster
         // from rung 3 and self-play produces them by the spell (stage19_arena measured 3.1 s of hazard an episode,
         // stage4_gauntlet 1.1 s) -- but a class/role that stalls below rung 3 never meets one, and a second an
@@ -731,7 +780,7 @@ namespace
             return "a director needs the order block: its seats have to read what it asks";
         if (arena.OnFoot && arena.Against != Opposition::Travel)
             return "only a travel arena can be made on foot: there is nothing else a mount would be barred from";
-        if (arena.OnFoot && arena.Flying)
+    if (arena.OnFoot && arena.Flying)
             return "an arena is on foot or it flies, not both";
         if (arena.Places && !arena.Directed)
             return "only a director names a place: the arena has to be directed";
@@ -762,6 +811,13 @@ namespace
             return "only a scripted enemy player takes a level bonus";
         if (arena.Flying && !travel)
             return "only a travel arena flies";
+        if (arena.Indoors && !travel)
+            return "only a travel arena can be indoors: being inside changes where an objective may be put and "
+                "what reaching it means, and nothing else asks either question";
+        if (arena.Indoors && arena.Flying)
+            return "an arena is indoors or it flies, not both";
+        if (arena.Indoors && arena.Water)
+            return "an interior arena has no crossing to offer: water wants an objective across a lake";
         if (flag && (!stage.Has(BlockId::Travel) || !stage.Has(BlockId::Flag)))
             return "a flag match needs the travel and flag blocks";
 

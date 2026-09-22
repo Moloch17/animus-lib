@@ -563,6 +563,10 @@ namespace Animus::Curriculum
             /// On foot (ArenaDefinition::OnFoot): shorter, because the lesson is how well the seat covers
             /// ground with what it has rather than whether a ride is worth summoning. Long enough that a
             /// speed cooldown pays for itself and short enough that the trip is not simply a wait.
+            /// Inside a building the whole trip is shorter than an outdoor one's first step: an inn is twenty to
+            /// thirty yards across, and FootMin alone would put every objective through an outside wall.
+            float IndoorMin = 8.0f;
+            float IndoorMax = 40.0f;
             float FootMin = 40.0f;
             float FootMax = 160.0f;
             float FlyingMin = 350.0f;           // flying arenas: yards from the start
@@ -838,6 +842,8 @@ namespace Animus::Curriculum
             f("Travel.ObjectiveMin", tuning.Travel.ObjectiveMin);
             f("Travel.ObjectiveMax", tuning.Travel.ObjectiveMax);
             f("Travel.FootMin", tuning.Travel.FootMin);
+            f("Travel.IndoorMin", tuning.Travel.IndoorMin);
+            f("Travel.IndoorMax", tuning.Travel.IndoorMax);
             f("Travel.FootMax", tuning.Travel.FootMax);
             f("Travel.FlyingMin", tuning.Travel.FlyingMin);
             f("Travel.FlyingMax", tuning.Travel.FlyingMax);

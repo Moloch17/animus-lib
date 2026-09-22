@@ -59,6 +59,13 @@ namespace
     constexpr float SWIM_PAYS_ABOVE = 7.0f / 4.7f;
     constexpr uint32 WATER_SAMPLES = 12;            // points along the straight line, looking for water
     constexpr float HEIGHT_SEARCH = 120.0f;
+    /// What an interior arena probes with instead: a step up from the seat's feet, searching down far enough to
+    /// find a cellar stair but never far enough up to find the storey above.
+    constexpr float INDOOR_RISE = 2.5f;
+    constexpr float INDOOR_SEARCH = 12.0f;
+    /// WMO group flag 0x8: this part of the building is open to the sky. Map::GetFullTerrainStatusForPosition
+    /// reads the same bit to decide whether a unit is outdoors.
+    constexpr uint32 WMO_GROUP_OUTDOORS = 0x8;
     constexpr float BODY_HEIGHT = 2.0f;             // for the water check
 }
 
@@ -204,7 +211,7 @@ void Animus::Curriculum::TravelEncounter::ResetEpisode(Env& env)
 }
 
 bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying,
-    Position& place, float budgetSeconds, float* walk, bool across, float* dry)
+    Position& place, float budgetSeconds, float* walk, bool across, float* dry, bool indoors)
 {
     // What the seat can actually cover in the time it has. Reachability was the only test until now -- a path of
     // type PATHFIND_NORMAL, no longer than MAX_PATH_DETOUR times the straight line -- and reachable is not the
@@ -229,10 +236,37 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
         float const y = bot->GetPositionY() + distance * std::sin(angle);
 
         map->LoadGrid(x, y);
-        float const z = map->GetHeight(bot->GetPhaseMask(), x, y, bot->GetPositionZ() + HEIGHT_SEARCH * 0.5f, true,
-            HEIGHT_SEARCH);
+        // Outdoors, look from well above the seat and search a long way down: ground forty yards up is still
+        // ground, and the broken arena's ridges span seventy yards of relief. Inside a building the same probe
+        // returns the roof, because Map::GetHeight casts a strictly downward ray from the z it is given -- so an
+        // interior arena looks from a step above its own feet instead, and finds the floor it is standing on.
+        float const from = indoors ? bot->GetPositionZ() + INDOOR_RISE : bot->GetPositionZ() + HEIGHT_SEARCH * 0.5f;
+        float const search = indoors ? INDOOR_SEARCH : HEIGHT_SEARCH;
+        float const z = map->GetHeight(bot->GetPhaseMask(), x, y, from, true, search);
         if (z <= INVALID_HEIGHT)
             continue;
+
+        // A place inside has to actually be inside. The probe can still land in a courtyard or on a roof edge
+        // through a doorway, and only the WMO data tells them apart: GetAreaInfo returns false where no building
+        // was hit at all, and mogpFlags bit 0x8 is the group's own "this part is outdoors". Then the core's own
+        // reachability test, which is a Detour raycast plus both collision trees, corrects the point or rejects
+        // it -- inside a building that is the difference between the floor and the inside of a table.
+        float placeX = x;
+        float placeY = y;
+        float placeZ = z;
+        if (indoors)
+        {
+            uint32 mogpFlags = 0;
+            int32 adtId = 0;
+            int32 rootId = 0;
+            int32 groupId = 0;
+            if (!map->GetAreaInfo(bot->GetPhaseMask(), x, y, z, mogpFlags, adtId, rootId, groupId))
+                continue;
+            if ((mogpFlags & WMO_GROUP_OUTDOORS) != 0)
+                continue;
+            if (!map->CanReachPositionAndGetValidCoords(bot, placeX, placeY, placeZ, true, true))
+                continue;
+        }
 
         // The objective itself always stands on dry land -- arriving is standing somewhere, not treading water.
         if (map->IsInWater(bot->GetPhaseMask(), x, y, z, BODY_HEIGHT))
@@ -287,7 +321,7 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
         if (walked > affordable)
             continue;
 
-        place.Relocate(x, y, z);
+        place.Relocate(placeX, placeY, placeZ);
         if (walk)
             *walk = walked;
         if (dry)
@@ -335,8 +369,10 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     float walk = 0.0f;
     // On foot the trip is shorter: the lesson is how well the seat covers ground with what it has, not
     // whether a ride is worth summoning.
-    float const least = flying ? tuning.FlyingMin : arena.OnFoot ? tuning.FootMin : tuning.ObjectiveMin;
-    float const most = flying ? tuning.FlyingMax : arena.OnFoot ? tuning.FootMax : tuning.ObjectiveMax;
+    float const least = arena.Indoors ? tuning.IndoorMin
+        : flying ? tuning.FlyingMin : arena.OnFoot ? tuning.FootMin : tuning.ObjectiveMin;
+    float const most = arena.Indoors ? tuning.IndoorMax
+        : flying ? tuning.FlyingMax : arena.OnFoot ? tuning.FootMax : tuning.ObjectiveMax;
     // A water arena asks for a crossing: an objective whose way round is much longer than the way through, with
     // water in between. Where the ground offers none within reach, fall back to an ordinary trip rather than
     // failing the env -- a scenario that cannot build an episode takes the whole run down with it, and one
@@ -346,6 +382,7 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     // copy of the open one and still be reported as teaching swimming. So the episode records whether it got a
     // crossing at all (`crossing`), and the stage gates the water arena on the seat actually swimming: a run
     // whose spawn points have no water in reach fails that gate and says so.
+    travel.Indoors = arena.Indoors;
     travel.Crossing = false;
     travel.DryDistance = 0.0f;
     travel.Travelled = 0.0f;
@@ -362,7 +399,8 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     if (arena.Water
         && FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, true, &travel.DryDistance))
         travel.Crossing = true;
-    else if (!FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk))
+    else if (!FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, false, nullptr,
+        arena.Indoors))
         return false;
 
     // What the way round costs on foot, for every arena rather than only the ones built around a crossing:
@@ -523,7 +561,10 @@ void Animus::Curriculum::TravelEncounter::Reward(Env& env, uint32 seatIndex, Pla
     seat.Combat.DamageTaken += env.StepStats[seatIndex].DamageTaken;
     ledger.Add(RewardTerm::DamageTaken, -tuning.DamageTaken * seat.LastStepDamageTaken);
 
-    if (!travel.Arrived && bot->IsAlive() && TravelBlock::AtObjective(bot, travel.Objective))
+    // Indoors, arriving has to mean the right floor: two-dimensional arrival puts a seat under a staircase six
+    // yards from an objective it has not reached.
+    float const maxRise = travel.Indoors ? TravelBlock::ARRIVE_SAME_FLOOR : TravelBlock::ARRIVE_ANY_RISE;
+    if (!travel.Arrived && bot->IsAlive() && TravelBlock::AtObjective(bot, travel.Objective, maxRise))
     {
         travel.Arrived = true;
         travel.ArriveMs = env.EpisodeElapsedMs;
