@@ -273,13 +273,6 @@ namespace
         // matters. It also left GetOrientation() unchanged for the heading Steer computes, so the turn did not
         // even steer the decision it was pressed on.
         view.Facing = Position::NormalizeOrientation(view.Facing + float(view.Turning) * MoveBlock::TURN_STEP);
-        // Turning is taking hold of the head by hand. Leaving the mode alone would have FACE_OBJECTIVE overwrite
-        // the turn inside UpdateFacing a moment later, so the turn would be invisible again for a different
-        // reason.
-        if (view.FacingMode == MoveBlock::ACTION_FACE_TARGET
-            || view.FacingMode == MoveBlock::ACTION_FACE_OBJECTIVE
-            || view.FacingMode == MoveBlock::ACTION_FACE_HEADING)
-            view.FacingMode = MoveBlock::ACTION_FACE_HOLD;
     }
 
     void StepPitch(Animus::Curriculum::SeatView& view)
@@ -569,10 +562,21 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
         if (view.FacingMode == face)
             allowed[face] = 0;              // already holding its head that way
 
-    // Turning is the mouse-look and is always available to something that can turn at all; the one being held is
-    // masked for the same reason a held bearing is.
-    allowed[ACTION_TURN_LEFT] = canTurn && view.Turning >= 0 ? 1 : 0;
-    allowed[ACTION_TURN_RIGHT] = canTurn && view.Turning <= 0 ? 1 : 0;
+    // Turning is the mouse-look, and it means nothing while the head is aimed at something in the world:
+    // FACE_TARGET and FACE_OBJECTIVE recompute the heading from the target's or the objective's position every
+    // decision, so a turn under either is overwritten before it can steer anything.
+    //
+    // It was worse than useless. A turn used to drop the seat out of the mode it was in, which is how an episode
+    // stopped tracking its objective: a seat holding FACE_OBJECTIVE walks a continuously corrected straight line
+    // and cannot drift, so the only way to come off that line was to press a turn. The traces show exactly that
+    // -- the episodes that fail press seven turns to an arrival's two, and in the worst of them a turn is
+    // followed immediately by face_objective 22 times out of 27, the seat re-aiming at what the turn had just
+    // knocked it off. Leaving the mode alone instead would make the turn silently do nothing, which teaches the
+    // policy nothing either. Masking says what is true: there is no heading to choose while something else is
+    // choosing it. To look elsewhere, take the head back with FACE_HOLD first.
+    bool const aimed = view.FacingMode == ACTION_FACE_TARGET || view.FacingMode == ACTION_FACE_OBJECTIVE;
+    allowed[ACTION_TURN_LEFT] = canTurn && !aimed && view.Turning >= 0 ? 1 : 0;
+    allowed[ACTION_TURN_RIGHT] = canTurn && !aimed && view.Turning <= 0 ? 1 : 0;
 
     // Pitch only means something off the ground. On foot the ground decides the seat's height, so the three
     // actions are masked rather than merely useless -- a masked action cannot be explored into.
@@ -627,6 +631,14 @@ void Animus::Curriculum::MoveBlock::Apply(SeatView& view, uint32 local, SeatActi
     if (local <= ACTION_FACE_OBJECTIVE)
     {
         view.FacingMode = uint8(local);
+        // A turn already held would otherwise keep running under a mode that overwrites it, and the turn actions
+        // are masked from here on, so nothing could stop it.
+        if (local == ACTION_FACE_TARGET || local == ACTION_FACE_OBJECTIVE)
+        {
+            view.Turning = 0;
+            view.Option->Stop(SeatOptionKind::MoveTurn);
+        }
+
         // Steer settles the heading and carries it, whether the seat is walking (on the move spline) or standing
         // still (as a turn on the spot). Choosing where to look should do something on the decision it is
         // chosen, not on the next one the seat happens to move.
