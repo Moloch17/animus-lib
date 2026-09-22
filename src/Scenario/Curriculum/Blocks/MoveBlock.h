@@ -336,6 +336,12 @@ namespace Animus::Curriculum
         /// share the mesh's 1.8 yd simplification error, so that error cancels and this only has to cover the
         /// arithmetic.
         static constexpr float BURN_EDGE_MARGIN = 0.5f;
+
+        /// The shortest jump worth making, and the shortest one that is safe to build.
+        ///
+        /// Both halves matter. A jump of a few inches is not a move, and a jump of none at all is a spline with
+        /// no length, whose duration is zero and whose position is then whatever dividing by it produces.
+        static constexpr float JUMP_MIN_YARDS = 1.0f;
         /// What a character's breath is worth, for OBS_SUBMERGED_TIME. A held breath is about a minute in this
         /// expansion; the number only has to be the right size for the feature to mean something.
         static constexpr float BREATH_SECONDS = 60.0f;

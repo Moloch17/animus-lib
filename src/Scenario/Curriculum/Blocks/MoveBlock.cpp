@@ -246,6 +246,16 @@ namespace
         if (!map->CanReachPositionAndGetValidCoords(bot, x, y, z, true, true))
             return false;
 
+        // CanReachPositionAndGetValidCoords does not only answer, it rewrites the coordinates to the last point
+        // it found valid -- so a jump into a wall comes back "true" with the landing moved onto the seat's own
+        // feet. That is not a jump, and worse than not being one: the spline built from it has no length, and a
+        // spline with no length has no duration to divide by. Refuse anything that has not actually gone
+        // anywhere, and let the seat keep its feet.
+        float const dx = x - bot->GetPositionX();
+        float const dy = y - bot->GetPositionY();
+        if (dx * dx + dy * dy < MoveBlock::JUMP_MIN_YARDS * MoveBlock::JUMP_MIN_YARDS)
+            return false;
+
         landing.Relocate(x, y, z);
         return true;
     }
