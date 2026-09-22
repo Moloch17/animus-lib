@@ -156,6 +156,20 @@ void Animus::Curriculum::TravelEncounter::AddEpisodeInfo(EpisodeInfoTable& table
     table.Add("objective_y", [this](Env const& env, uint32) { return _envs[env.Index].Objective.GetPositionY(); });
     // How often the trip was measured against a straight line instead of a route. A number above zero here
     // means some share of every arrival rate ever reported was judged on a trip that was never checked.
+    // The way itself: how long it was, whether it arrived, and whether one could be found at all. Without the
+    // last of these a routing regression is indistinguishable from a policy that got worse.
+    table.Add("route_length", [this](Env const& env, uint32)
+    {
+        return _envs[env.Index].Way.Valid ? _envs[env.Index].Way.Length : 0.0f;
+    });
+    table.Add("route_complete", [this](Env const& env, uint32)
+    {
+        return _envs[env.Index].Way.Valid && _envs[env.Index].Way.Complete ? 1.0f : 0.0f;
+    });
+    table.Add("route_failed", [this](Env const& env, uint32)
+    {
+        return _envs[env.Index].WayFailed ? 1.0f : 0.0f;
+    });
     table.Add("route_shortcut", [this](Env const& env, uint32)
     {
         return _envs[env.Index].Shortcut ? 1.0f : 0.0f;
@@ -496,6 +510,68 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     return true;
 }
 
+bool Animus::Curriculum::TravelEncounter::RefreshWay(EnvTravel& travel, Player* bot, float stray,
+    float refreshSeconds, float corner, uint32 nowMs)
+{
+    if (!travel.HasObjective || !bot || !bot->IsAlive())
+        return false;
+
+    Map* map = bot->GetMap();
+    if (!map)
+        return false;
+
+    float const x = bot->GetPositionX();
+    float const y = bot->GetPositionY();
+    float const z = bot->GetPositionZ();
+
+    if (travel.Way.Valid)
+    {
+        travel.Way.Advance(x, y, z, corner);
+
+        bool const moved = travel.Way.Next < travel.Way.Count
+            && bot->GetExactDist2d(travel.Way.X[travel.Way.Next], travel.Way.Y[travel.Way.Next]) > stray;
+        bool const elapsed = nowMs > travel.WayMs
+            && float(nowMs - travel.WayMs) / 1000.0f >= refreshSeconds;
+        bool const elsewhere = travel.Way.To.GetExactDist2d(&travel.Objective) > 1.0f;
+
+        // A way that arrives and is still being walked is left alone. Re-planning it would cost a search to
+        // produce the same corners, and would reset the shaping for nothing.
+        if (!moved && !elapsed && !elsewhere)
+            return false;
+    }
+
+    Position const from(x, y, z, bot->GetOrientation());
+    bool const planned = RoutePlanner::Instance().Plan(map, from, travel.Objective, travel.Way);
+    travel.WayMs = nowMs;
+    travel.WayFailed = !planned;
+    return true;
+}
+
+float Animus::Curriculum::TravelEncounter::WayDistance(EnvTravel const& travel, Player const* bot)
+{
+    float const straight = bot->GetExactDist2d(&travel.Objective);
+    if (!travel.Way.Valid)
+        return straight;
+
+    float const along = travel.Way.RemainingFrom(bot->GetPositionX(), bot->GetPositionY(),
+        bot->GetPositionZ());
+    if (along < 0.0f)
+        return straight;
+
+    // A partial route stops short of the objective, so what is left along it is short by the gap at the end.
+    // Adding that gap back keeps the number a distance to the objective rather than to the end of the map the
+    // seat can currently see, and keeps it comparable across a re-plan that reaches further.
+    if (!travel.Way.Complete && travel.Way.Count > 0)
+    {
+        uint32 const last = travel.Way.Count - 1;
+        float const dx = travel.Way.X[last] - travel.Objective.GetPositionX();
+        float const dy = travel.Way.Y[last] - travel.Objective.GetPositionY();
+        return along + std::sqrt(dx * dx + dy * dy);
+    }
+
+    return along;
+}
+
 bool Animus::Curriculum::TravelEncounter::SelectTarget(Env const& /*env*/, uint32 /*seat*/, Unit*& target)
 {
     // Nothing to fight: the seats act without a target (SeatEncoder::ActsWithoutTarget).
@@ -602,9 +678,28 @@ void Animus::Curriculum::TravelEncounter::Reward(Env& env, uint32 seatIndex, Pla
     // 0.388, and the policy sensibly stopped flying. The climb costs here and the descent pays it back, which
     // telescopes to nothing over the trip -- the point is that the seat can see the axis it has to close.
     bool const flyingArena = _scenario.Arena(env).Flying;
-    float const distance = flyingArena ? bot->GetExactDist(&travel.Objective)
-        : bot->GetExactDist2d(&travel.Objective);
-    if (travel.LastDistance >= 0.0f && !travel.Arrived)
+
+    // The distance that is shaped on is the distance along the way there, not the distance through whatever
+    // lies between. Shaping on the straight line is what made a detour cost: every yard spent walking round a
+    // ridge increases it and is charged for, so the seat was being taught not to go round things -- which is
+    // exactly what the failures do. They run at 99% of run speed for the whole clock, cover 8.6x the straight
+    // line, and never get closer than they were twelve seconds in. Potential shaping on the true remaining
+    // distance has no local minimum to sit in; shaping on the crow's flight is made of them.
+    //
+    // Flying arenas keep the straight line, in three dimensions, because there is no mesh to walk and the
+    // comment below still applies: a seat shaped on the ground distance alone flew to directly above the
+    // marker and hovered there.
+    bool replanned = false;
+    if (!flyingArena)
+        replanned = RefreshWay(travel, bot, tuning.RouteStray, tuning.RouteRefresh, tuning.RouteCorner,
+            env.EpisodeElapsedMs);
+
+    float const distance = flyingArena ? bot->GetExactDist(&travel.Objective) : WayDistance(travel, bot);
+
+    // A re-planned route is a new potential function, and the difference between the old one and the new one is
+    // not progress the seat made. FlagEncounter has the same rule where a flag changes hands: start over and
+    // pay nothing for the change itself.
+    if (travel.LastDistance >= 0.0f && !travel.Arrived && !replanned)
         ledger.Add(RewardTerm::Progress, tuning.Progress * (travel.LastDistance - distance) / 100.0f);
     travel.LastDistance = distance;
 

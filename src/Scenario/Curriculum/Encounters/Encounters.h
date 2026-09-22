@@ -26,6 +26,7 @@
 #include "Env.h"
 #include "ObjectGuid.h"
 #include "RewardLedger.h"
+#include "RoutePlanner.h"
 #include "ScriptedPlayer.h"
 #include "SeatView.h"
 #include "StageDefinition.h"
@@ -588,6 +589,14 @@ namespace Animus::Curriculum
             /// never closed past fifty has a routing fault, or was sent somewhere it cannot reach. Those are
             /// different bugs with different fixes and the end distance cannot tell them apart -- both of them
             /// finish sixty yards out.
+            /// The way to the objective, and when it was last planned.
+            ///
+            /// Held per env rather than per seat because the objective is the env's: travel is one trip that
+            /// one seat makes. It is what Progress is shaped on -- the distance along this, not the distance
+            /// through the hillside between here and there.
+            Route Way;
+            uint32 WayMs = 0;
+            bool WayFailed = false;         // a route was wanted and none was found
             /// The trip was measured against a straight line rather than a route -- see FindPlace. Reported and
             /// not yet acted on: the first question is how many episodes this is.
             bool Shortcut = false;
@@ -633,6 +642,17 @@ namespace Animus::Curriculum
             uint32 AloftFlagged = 0;
             uint32 LastRewardMs = 0;
         };
+
+        /// Re-plan the way to the objective if it has gone stale, and say whether it was re-planned.
+        ///
+        /// Movement first, then the clock, for the reason the ground probe gives: at seven yards a second a
+        /// timer alone goes stale inside the first corner. A route that cannot be found leaves WayFailed set
+        /// and the straight line standing, which is worse shaping but not no shaping.
+        bool RefreshWay(EnvTravel& travel, Player* bot, float stray, float refreshSeconds, float corner,
+            uint32 nowMs);
+
+        /// Yards to the objective along the way there, or the straight line where there is no way.
+        static float WayDistance(EnvTravel const& travel, Player const* bot);
 
         /// How much of the walk the trip saved, 0 (no faster than walking, or slower) to 1. Mounting is worth what
         /// it saves: nothing over a hop too short to pay for the cast, most of it over a long haul.
