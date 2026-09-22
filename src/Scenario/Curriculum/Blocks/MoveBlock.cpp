@@ -510,9 +510,18 @@ namespace
                 // There is no direction out of a point that is already on the edge, so the honest reading is
                 // the one the probe starts with -- no direction at all -- and the clearance distance beside it
                 // still says the seat is against something.
+                //
+                // And it is only a direction when a wall was found at all. findDistanceToWall writes hitPos
+                // only inside its loop, on a hit, but subtracts and normalises unconditionally at the end --
+                // so with nothing in range it normalises (centre - {0, 0, 0}), which is the bearing from the
+                // world origin to the seat. That is finite, non-zero and completely wrong: it would hand the
+                // policy an absolute compass reading of where in the world it is standing, in open country,
+                // where the held-out arenas exist precisely to prove it is reading terrain and not remembering
+                // places. Nothing further out than the search radius has a way out to point at.
                 float const outX = normal[2];
                 float const outY = normal[0];
-                if (std::isfinite(outX) && std::isfinite(outY) && outX * outX + outY * outY > 1e-6f)
+                if (distance < MoveBlock::CLEARANCE_RANGE
+                    && std::isfinite(outX) && std::isfinite(outY) && outX * outX + outY * outY > 1e-6f)
                 {
                     float const away = std::atan2(outY, outX) - facing;
                     probe->ClearanceSin = std::sin(away);
@@ -799,14 +808,21 @@ std::string Animus::Curriculum::MoveBlock::RayReport(Map* map, float x, float y,
     if (dtStatusSucceed(query->findDistanceToWall(startRef, at, CLEARANCE_RANGE, &filter, &distance, hit,
         normal)))
     {
-        bool const directed = std::isfinite(normal[0]) && std::isfinite(normal[2])
+        bool const directed = distance < CLEARANCE_RANGE && std::isfinite(normal[0]) && std::isfinite(normal[2])
             && normal[0] * normal[0] + normal[2] * normal[2] > 1e-6f;
         float const away = directed ? std::atan2(normal[0], normal[2]) : 0.0f;
-        out << "\n  clearance    " << distance << " yd of " << CLEARANCE_RANGE
-            << ", the way out bears " << (away * 180.0f / float(M_PI)) << " deg world, "
-            << (std::atan2(std::sin(away - facing), std::cos(away - facing)) * 180.0f / float(M_PI))
-            << " deg from the facing\n";
-        out << "  nearest edge (" << hit[2] << ", " << hit[0] << ", " << hit[1] << ") world xyz\n";
+        if (!directed)
+        {
+            out << "\n  clearance    nothing within " << CLEARANCE_RANGE << " yd, so no way out to point at\n";
+        }
+        else
+        {
+            out << "\n  clearance    " << distance << " yd of " << CLEARANCE_RANGE
+                << ", the way out bears " << (away * 180.0f / float(M_PI)) << " deg world, "
+                << (std::atan2(std::sin(away - facing), std::cos(away - facing)) * 180.0f / float(M_PI))
+                << " deg from the facing\n";
+            out << "  nearest edge (" << hit[2] << ", " << hit[0] << ", " << hit[1] << ") world xyz\n";
+        }
 
         // Three ways of measuring one wall, which must agree.
         //
