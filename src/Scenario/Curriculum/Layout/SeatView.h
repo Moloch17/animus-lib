@@ -187,6 +187,15 @@ namespace Animus::Curriculum
         /// lets a seat strafe or back away without turning round.
         uint8 HeldBearing = 0xFF;
         uint8 FacingMode = 0xFF;
+        /// **Where the seat believes it is looking**, and the frame every bearing is measured off.
+        ///
+        /// Not bot->GetOrientation(), which is not the seat's to own: a spline writes the direction of travel
+        /// onto it every tick, and a knockback, a fall or another block's move overwrite it outright. Steering
+        /// off it meant the frame moved under the seat between one decision and the next, so a held bearing
+        /// rotated 45 degrees a decision and the seat spiralled instead of walking a line. This is the policy's
+        /// own heading: the spline is told to hold it, so the two normally agree, but when they disagree this is
+        /// the one that decides where "forward" is.
+        float Facing = 0.0f;
         /// Which way it is turning (-1 left, +1 right, 0 not) and how far up or down it is looking, in radians.
         /// Yaw and pitch are held like a mouse: the seat keeps turning while the key is down and stays where it got
         /// to when the key comes up, which is what makes a heading between two compass points reachable at all.
