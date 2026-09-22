@@ -258,26 +258,38 @@ namespace
             .MapId = MAP_KALIMDOR,
             // Every inn on Kalimdor that areatrigger_tavern names, spread across regions for the same reason the
             // ground list is: a policy that sees four rooms learns four rooms.
+            // Every one of these was stood on before it was written down, with `forge rays`, and the ones that
+            // are not here are why the command exists.
+            //
+            // The first draft of this list was the centre of each row of areatrigger_tavern, on the reasoning
+            // that the table names and bounds every inn in the world. It does -- but an areatrigger's centre is
+            // a point in a volume, not a place on a floor, and of the twelve taken that way three were on no
+            // navmesh at all and four were in buildings whose WMO group is flagged outdoors. Astranaar's centre
+            // sits in the gap between two storeys; the Barrens and Durotar ones landed on isolated discs of mesh
+            // about thirty yards across, open ground rather than rooms. The four flagged outdoors are the night
+            // elf inns -- Auberdine, Dolanaar, Astranaar -- which really are open-sided, and FindPlace refuses to
+            // put an objective in one, so a seat spawned there would have had nowhere to be sent.
+            //
+            // What is left is every tavern on Kalimdor that is on the mesh and whose group says it is inside,
+            // with z corrected from the trigger's centre to the floor Map::GetHeight finds under it -- as much
+            // as ten yards down in one case. Clearance at each is 0.71 to 6.63 yards, which is the point: these
+            // are rooms a seat can touch two walls in.
             .SpawnPoints = {
-                { -3182.4f, -2920.8f, 33.6f, 0.0f },   // Brackenwall Village
-                { -4622.3f, -3172.1f, 34.8f, 0.0f },   // Mudsprocket
-                { 2756.6f, -423.1f, 119.4f, 0.0f },    // Astranaar
-                { 6410.0f, 527.0f, 14.1f, 0.0f },      // Auberdine
-                { -405.3f, -2645.3f, 112.0f, 0.0f },   // The Barrens
-                { -1051.4f, -3653.8f, 31.1f, 0.0f },   // The Barrens
-                { -2372.5f, -1991.6f, 121.0f, 0.0f },  // The Barrens
-                { 341.4f, -4684.7f, 30.9f, 0.0f },     // Durotar
-                { -2366.7f, -346.0f, -1.3f, 0.0f },    // Mulgore
-                { 898.5f, 922.7f, 126.8f, 0.0f },      // Stonetalon Mountains
-                { -4370.8f, 3289.1f, 23.8f, 0.0f },    // Feralas
-                { -5477.9f, -2460.3f, 89.3f, 0.0f },   // Thousand Needles
+                { -3182.4f, -2920.8f, 33.56f, 0.0f },  // Brackenwall Village, clearance 1.70
+                { -4461.9f, 242.6f, 39.11f, 0.0f },    // Feralas, 2.85
+                { -4622.3f, -3172.1f, 34.81f, 0.0f },  // Mudsprocket, 2.84
+                { -2366.7f, -346.0f, -8.96f, 0.0f },   // Mulgore, 2.29
+                { -1051.4f, -3653.8f, 23.88f, 0.0f },  // The Barrens, 2.71
+                { -5477.9f, -2460.3f, 89.28f, 0.0f },  // Thousand Needles, 5.36
+                { 6688.0f, -4670.1f, 721.69f, 0.0f },  // Winterspring, 6.63
             },
             // Rooms no training episode stands in, for the same reason every other stage holds ground back.
+            // Desolace is the tightest room found anywhere on the map at 0.71 yards of clearance, which makes it
+            // the one worth scoring on.
             .HeldOutSpawnPoints = {
-                { -3615.5f, -4467.3f, 24.3f, 0.0f },   // Theramore Isle
-                { 245.6f, 1252.0f, 210.1f, 0.0f },     // Desolace
-                { 9809.0f, 959.2f, 1315.3f, 0.0f },    // Dolanaar
-                { -7162.1f, -3845.9f, 8.8f, 0.0f },    // Tanaris
+                { -1596.2f, 3145.3f, 62.53f, 0.0f },   // Desolace, clearance 0.71
+                { -3615.5f, -4467.3f, 21.10f, 0.0f },  // Theramore Isle, 3.43
+                { -7162.1f, -3845.9f, 9.51f, 0.0f },   // Tanaris, 5.91
             },
         });
 

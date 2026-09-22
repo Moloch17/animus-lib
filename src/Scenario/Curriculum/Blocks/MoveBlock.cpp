@@ -33,6 +33,8 @@
 #include "TravelBlock.h"
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 
 namespace
 {
@@ -148,8 +150,8 @@ namespace
     /// as `range` would be a seat told the way is clear to the horizon because the question could not be asked.
     /// Every caller must decide what silence means for what it is asking, and none of them may treat it as
     /// clear ground.
-    float NavRay(dtNavMeshQuery const* query, dtPolyRef startRef, Player const* bot, float heading, float range,
-        uint16 includeFlags)
+    float NavRay(dtNavMeshQuery const* query, dtPolyRef startRef, float x, float y, float z, float heading,
+        float range, uint16 includeFlags)
     {
         if (!query || !startRef)
             return -1.0f;
@@ -160,10 +162,8 @@ namespace
 
         // Detour's axes are {y, z, x}, not the world's (x, y, z). Getting this wrong is silent -- the ray simply
         // goes somewhere else -- so it is written out rather than swizzled in passing.
-        float const from[3] = { bot->GetPositionY(), bot->GetPositionZ(), bot->GetPositionX() };
-        float const to[3] = { bot->GetPositionY() + range * std::sin(heading),
-            bot->GetPositionZ(),
-            bot->GetPositionX() + range * std::cos(heading) };
+        float const from[3] = { y, z, x };
+        float const to[3] = { y + range * std::sin(heading), z, x + range * std::cos(heading) };
 
         float t = 0.0f;
         float normal[3] = { 0.0f, 0.0f, 0.0f };
@@ -414,15 +414,22 @@ namespace
             // so it stops at a shore, a lava edge or a wall. The wet one may cross water, so it stops at a lava
             // edge or a wall. The last crosses everything liquid, so it stops only where the mesh itself ends.
             //
-            // Each gap between them is a different fact. dry against wet is the width of the water along this
-            // bearing -- the quantity "is this crossing worth it" actually depends on, which the seat has been
-            // deciding half-blind. wet against all is the one that matters more: if the ray that may not cross
-            // magma stops short of the ray that may, what stopped it was magma or slime, and it stopped at the
-            // burning edge.
-            float const wet = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
+            // What the pair is good for is `dry` itself: the yards to the water's edge along this bearing,
+            // continuous, where the plane it replaced was a yes or no sampled at five fixed ranges. It does not
+            // give the width of the crossing -- the wet filter crosses ground too, so past a shore it runs on
+            // over the far bank until a wall stops it, and a narrow channel reads the same as a lake.
+            //
+            // wet against all is the pair that does mean exactly one thing, because those two filters differ in
+            // nothing but magma and slime: if the ray that may not cross them stops short of the ray that may,
+            // what stopped it was burning, and it stopped at the burning edge.
+            float const rayX = bot->GetPositionX();
+            float const rayY = bot->GetPositionY();
+            float const rayZ = bot->GetPositionZ();
+            float const wet = NavRay(query, startRef, rayX, rayY, rayZ, heading, MoveBlock::MARCH_MAX,
                 NAV_GROUND | NAV_WATER);
-            float const dry = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX, NAV_GROUND);
-            float const all = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
+            float const dry = NavRay(query, startRef, rayX, rayY, rayZ, heading, MoveBlock::MARCH_MAX,
+                NAV_GROUND);
+            float const all = NavRay(query, startRef, rayX, rayY, rayZ, heading, MoveBlock::MARCH_MAX,
                 NAV_GROUND | NAV_WATER | NAV_MAGMA | NAV_SLIME);
 
             // The nearer of the two senses wins: the march sees drops the mesh calls walkable, the ray sees
@@ -664,6 +671,142 @@ std::string Animus::Curriculum::MoveBlock::ActionName(Layout const& /*layout*/, 
     };
 
     return local < NAMES.size() ? NAMES[local] : std::string();
+}
+
+std::string Animus::Curriculum::MoveBlock::RayReport(Map* map, float x, float y, float z, float facing)
+{
+    if (!map)
+        return "no map\n";
+
+    dtNavMeshQuery const* query = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+    if (!query)
+        return "no navmesh query on this map -- mmaps are not loaded for it\n";
+
+    dtQueryFilterExt filter;
+    filter.setIncludeFlags(NAV_GROUND | NAV_WATER);
+    filter.setExcludeFlags(0);
+    float const at[3] = { y, z, x };
+    float const extents[3] = { 3.0f, 5.0f, 3.0f };
+    dtPolyRef startRef = 0;
+    if (dtStatusFailed(query->findNearestPoly(at, extents, &filter, &startRef, nullptr)) || !startRef)
+        return "that point is not on the navmesh within {3, 5, 3} of itself\n";
+
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2);
+
+    // Whether this is a room, by the same test the objective generator applies, and where the floor under it
+    // actually is. Both are here because a spawn point taken from a table of coordinates is a guess until
+    // something stands on it: an areatrigger's centre can sit in a courtyard, on a roof, or -- as the Astranaar
+    // inn's does -- in the gap between two storeys, where it is on no floor at all.
+    {
+        uint32 mogpFlags = 0;
+        int32 adtId = 0;
+        int32 rootId = 0;
+        int32 groupId = 0;
+        if (!map->GetAreaInfo(PHASEMASK_NORMAL, x, y, z, mogpFlags, adtId, rootId, groupId))
+            out << "  inside       no -- no building here at all\n";
+        else if ((mogpFlags & 0x8) != 0)
+            out << "  inside       no -- in a building, but this group is flagged outdoors\n";
+        else
+            out << "  inside       yes\n";
+
+        // Downward from just above the point, which is the core's own idiom: GetHeight cannot see a floor above
+        // where it starts, so a point given too high finds the storey below and one given too low finds nothing.
+        float const floor = map->GetHeight(PHASEMASK_NORMAL, x, y, z + 2.0f, true, 20.0f);
+        if (floor > INVALID_HEIGHT)
+            out << "  floor        z " << floor << ", which is " << (z - floor) << " below the point given\n";
+        else
+            out << "  floor        none within 20 yd below z " << (z + 2.0f) << "\n";
+        out << "\n";
+    }
+
+    out << "  bearing      heading     dry     wet     all  beyond   burn\n";
+    out << "  -----------  -------  ------  ------  ------  ------  -----\n";
+
+    static constexpr char const* NAMES[8] =
+    {
+        "forward", "fwd-right", "right", "back-right", "back", "back-left", "left", "fwd-left"
+    };
+
+    for (uint32 bearing = 0; bearing < BEARING_COUNT; ++bearing)
+    {
+        float const heading = HeadingOf(facing, bearing);
+        float const wet = NavRay(query, startRef, x, y, z, heading, MARCH_MAX, NAV_GROUND | NAV_WATER);
+        float const dry = NavRay(query, startRef, x, y, z, heading, MARCH_MAX, NAV_GROUND);
+        float const all = NavRay(query, startRef, x, y, z, heading, MARCH_MAX,
+            NAV_GROUND | NAV_WATER | NAV_MAGMA | NAV_SLIME);
+
+        out << "  " << std::setw(11) << std::left << (bearing < 8 ? NAMES[bearing] : "?") << std::right
+            << "  " << std::setw(7) << (heading * 180.0f / float(M_PI))
+            << "  " << std::setw(6) << dry
+            << "  " << std::setw(6) << wet
+            << "  " << std::setw(6) << all;
+
+        // How much further the wet ray got than the dry one. This is NOT the width of the water, though the
+        // plan that asked for these rays said it was, and the first bench run at the Barrens oasis is what
+        // showed otherwise: the wet filter crosses water *and* ground, so once past a shore it keeps going over
+        // whatever is on the far side and stops only at a wall. A two yard channel and a two yard shore of a
+        // forty yard lake both report the same thirty-eight. What the seat actually gets from the pair is the
+        // distance to the water's edge, which is `dry`, and that is real and is new -- the plane it replaced
+        // was a yes or no sampled at five fixed ranges. Width would need a ray that starts past the shore and
+        // is filtered to water alone; it is not derived here and is not claimed anywhere.
+        if (wet >= 0.0f && dry >= 0.0f && wet > dry)
+            out << "  " << std::setw(6) << (wet - dry);
+        else
+            out << "       -";
+
+        if (all >= 0.0f && wet >= 0.0f && all > wet + BURN_EDGE_MARGIN)
+            out << "  " << std::setw(5) << wet;
+        else
+            out << "      -";
+        out << "\n";
+    }
+
+    // Clearance, which is the one number a wrong swizzle shows up in on its own: in a corridor it must be
+    // small, in open country it must run to the full search radius, and the way out must point at the middle
+    // of the corridor rather than into the wall.
+    float distance = 0.0f;
+    float hit[3] = { 0.0f, 0.0f, 0.0f };
+    float normal[3] = { 0.0f, 0.0f, 0.0f };
+    if (dtStatusSucceed(query->findDistanceToWall(startRef, at, CLEARANCE_RANGE, &filter, &distance, hit,
+        normal)))
+    {
+        float const away = std::atan2(normal[0], normal[2]);
+        out << "\n  clearance    " << distance << " yd of " << CLEARANCE_RANGE
+            << ", the way out bears " << (away * 180.0f / float(M_PI)) << " deg world, "
+            << (std::atan2(std::sin(away - facing), std::cos(away - facing)) * 180.0f / float(M_PI))
+            << " deg from the facing\n";
+        out << "  nearest edge (" << hit[2] << ", " << hit[0] << ", " << hit[1] << ") world xyz\n";
+
+        // Three ways of measuring one wall, which must agree.
+        //
+        // This is the check the whole command exists for. Detour's axes are {y, z, x}, and a swizzle that is
+        // wrong returns plausible numbers about the wrong place, which no amount of staring at terrain will
+        // settle -- the ground around a lake is irregular enough to explain almost any reading. So the wall is
+        // measured three independent ways instead: the distance findDistanceToWall reports, the distance to the
+        // coordinates it hands back, and how far a ray cast at that wall's own bearing runs before it stops.
+        //
+        // The first two agreeing proves the input point and the returned position use the convention this code
+        // thinks they do. The third agreeing proves the ray's direction does too, because it is built from
+        // sin and cos of a bearing rather than from a position. Nothing here depends on knowing the terrain,
+        // so it is a real test anywhere there is a wall within range.
+        if (distance < CLEARANCE_RANGE)
+        {
+            float const edgeX = hit[2];
+            float const edgeY = hit[0];
+            float const measured = std::sqrt((edgeX - x) * (edgeX - x) + (edgeY - y) * (edgeY - y));
+            float const toEdge = std::atan2(edgeY - y, edgeX - x);
+            float const along = NavRay(query, startRef, x, y, z, toEdge, MARCH_MAX, NAV_GROUND | NAV_WATER);
+            out << "  self-check   reported " << distance << " yd, its coordinates are " << measured
+                << " yd away, a ray at its bearing stops at " << along << " yd -- these must agree\n";
+        }
+    }
+    else
+    {
+        out << "\n  clearance    no wall within " << CLEARANCE_RANGE << " yd\n";
+    }
+
+    return out.str();
 }
 
 void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, uint8* mask) const

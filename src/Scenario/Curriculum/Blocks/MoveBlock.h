@@ -21,6 +21,8 @@
 
 #include "Block.h"
 
+class Map;
+
 namespace Animus::Curriculum
 {
     /// Where the seat puts its feet, answered without reference to anything it is fighting.
@@ -163,9 +165,15 @@ namespace Animus::Curriculum
             /// whether to cross while unable to see how wide the crossing was.
             ///
             /// Both come from the same navmesh raycast under different filters: NAV_GROUND alone stops at the
-            /// shore, NAV_GROUND | NAV_WATER swims on and stops at the far side. Reading the pair together is
-            /// the whole encoding -- equal means a wall or a cliff (or a lava edge, which OBS_BURNS_FIRST names),
-            /// and shore short of reach means water that many yards away and that many wide.
+            /// shore, NAV_GROUND | NAV_WATER swims on. Reading the pair together is the whole encoding --
+            /// equal means a wall or a cliff (or a lava edge, which OBS_BURNS_FIRST names), and shore short of
+            /// reach means water that many yards away.
+            ///
+            /// How many yards *across* it is, this does not say, and an earlier draft of this comment claimed
+            /// it did. The wet filter crosses ground as well as water, so past a shore it runs on over the far
+            /// bank and stops at a wall: a two yard channel and the near edge of a forty yard lake report the
+            /// same thing. The bench at the Barrens oasis is what caught it (`forge rays`). Width would need a
+            /// ray starting past the shore under a water-only filter, and is not measured.
             OBS_SHORE_FIRST         = 20 + 3 * BEARING_COUNT,
             /// **How near the liquid that burns is** along each bearing -- magma or slime -- as 1 at the
             /// seat's feet falling to 0 at the far end of the march, and exactly 0 where there is none.
@@ -335,6 +343,20 @@ namespace Animus::Curriculum
         [[nodiscard]] BlockId Id() const override { return BlockId::Move; }
         [[nodiscard]] BlockSize Size(Layout const& layout) const override;
         void DescribeManifest(Layout const& layout, boost::json::object& block) const override;
+        /// What the navmesh senses read standing at one point, as a table, for a console to print.
+        ///
+        /// This exists because every one of those senses is a Detour call, Detour's axes are {y, z, x} rather
+        /// than the world's, and a swizzle that is wrong is completely silent: the rays simply go somewhere
+        /// else and come back with plausible numbers about the wrong place. Nothing downstream can catch it.
+        /// An eval cannot catch it either -- it would show only as a policy that learns worse than it should,
+        /// after hours.
+        ///
+        /// So the rays are run here against geometry whose answer is already known -- a wall at a measured
+        /// distance, a corridor, the width of a lake that has been swum -- and read directly. It calls the same
+        /// NavRay and findDistanceToWall the probe calls, from the same kind of start polygon, so what it
+        /// prints is what a seat standing there would sense and not a second implementation of it.
+        static std::string RayReport(Map* map, float x, float y, float z, float facing);
+
         void Observe(SeatView const& view, float* obs, uint8* mask) const override;
         void BeforeApply(SeatView& view, SeatActionResult& result) const override;
         void Apply(SeatView& view, uint32 local, SeatActionResult& result) const override;
