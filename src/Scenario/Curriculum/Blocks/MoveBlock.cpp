@@ -143,11 +143,16 @@ namespace
     /// Flags are always set explicitly: a default-constructed dtQueryFilterExt includes 0xffff and would happily
     /// cross slime, and the runtime's own filter never includes NAV_SLIME at all (GetNavTerrain folds slime into
     /// NAV_MAGMA), so neither default is the one wanted here.
+    /// Returns yards to the first polygon edge the filter refuses to cross, or a negative number when there is
+    /// no answer -- off the mesh, or a failed query. That distinction matters: a failed obstacle ray that read
+    /// as `range` would be a seat told the way is clear to the horizon because the question could not be asked.
+    /// Every caller must decide what silence means for what it is asking, and none of them may treat it as
+    /// clear ground.
     float NavRay(dtNavMeshQuery const* query, dtPolyRef startRef, Player const* bot, float heading, float range,
         uint16 includeFlags)
     {
         if (!query || !startRef)
-            return range;
+            return -1.0f;
 
         dtQueryFilterExt filter;
         filter.setIncludeFlags(includeFlags);
@@ -166,7 +171,7 @@ namespace
         int count = 0;
         if (dtStatusFailed(query->raycast(startRef, from, to, &filter, &t, normal, visited, &count,
             NAV_RAY_POLYS)))
-            return range;
+            return -1.0f;
 
         // Detour reports t = FLT_MAX when the ray ran the whole way without leaving the mesh.
         return t >= 1.0f ? range : t * range;
@@ -178,14 +183,62 @@ namespace
     /// collision trees, then walkability and slope -- and it rewrites the coordinates to the first valid point
     /// it finds. That is what stops a seat jumping off the world, which the core warns about in as many words
     /// where it refuses to let a player use MoveJumpTo at all.
+    /// How long a jump hangs in the air, and how far it carries.
+    ///
+    /// Rising and falling take the same time, so the whole arc is 2 * speedZ / gravity -- about 825 ms at the
+    /// player's own launch speed, which is three decisions at DecisionMs.
+    uint64 JumpFlightMs()
+    {
+        return uint64(2000.0f * MoveBlock::JUMP_SPEED_Z / float(Movement::gravity));
+    }
+
+    float JumpRange(Player const* bot)
+    {
+        float const speedXY = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
+        return 2.0f * (MoveBlock::JUMP_SPEED_Z / float(Movement::gravity)) * speedXY;
+    }
+
+    /// Is there mesh where a jump along `heading` would come down? The cheap half of the landing test.
+    ///
+    /// One findNearestPoly at the landing point. If the navmesh has a polygon there the seat has somewhere to
+    /// come down; if it has not, the jump goes off the world and the action stays masked. The expensive half --
+    /// collision, walkability and slope, through CanReachPositionAndGetValidCoords -- runs in Apply, on the one
+    /// decision the jump is actually pressed, which is the only decision where it can change anything.
+    ///
+    /// The split is the whole point. The mask is consulted every decision for every seat whether the policy
+    /// ever jumps or not, and the full test builds a PathGenerator and casts two vmap rays to answer it. This
+    /// is one polygon lookup against a query object the refresh is holding open anyway.
+    bool JumpLandingNear(dtNavMeshQuery const* query, Player const* bot, float heading)
+    {
+        if (!query)
+            return false;
+
+        dtQueryFilterExt filter;
+        filter.setIncludeFlags(NAV_GROUND | NAV_WATER);
+        filter.setExcludeFlags(0);
+
+        float const range = JumpRange(bot);
+        // Detour's axes are {y, z, x}. Extents are the core's own from cs_mmaps: a landing further than this
+        // below where it was aimed is a fall rather than a landing, and should not answer the question yes.
+        float const at[3] = { bot->GetPositionY() + range * std::sin(heading),
+            bot->GetPositionZ(),
+            bot->GetPositionX() + range * std::cos(heading) };
+        float const extents[3] = { 3.0f, 5.0f, 3.0f };
+
+        dtPolyRef ref = 0;
+        if (dtStatusFailed(query->findNearestPoly(at, extents, &filter, &ref, nullptr)))
+            return false;
+
+        return ref != 0;
+    }
+
     bool JumpLanding(Player* bot, float heading, Position& landing)
     {
         Map* map = bot->GetMap();
         if (!map)
             return false;
 
-        float const speedXY = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
-        float const range = 2.0f * (MoveBlock::JUMP_SPEED_Z / float(Movement::gravity)) * speedXY;
+        float const range = JumpRange(bot);
 
         float x = bot->GetPositionX() + range * std::cos(heading);
         float y = bot->GetPositionY() + range * std::sin(heading);
@@ -357,27 +410,53 @@ namespace
             MarchBearing(bot, map, heading, probe->Reach[bearing], probe->Step[bearing], water,
                 probe->Burns[bearing]);
 
-            // Two rays. The dry one walks only ground, so it stops at a shore, a lava edge or a wall; the wet
-            // one may cross water, so it stops only at a lava edge or a wall. Where they differ, the difference
-            // is the width of the water along this bearing.
+            // Three rays, which differ only in what their filter will cross. The dry one walks ground alone,
+            // so it stops at a shore, a lava edge or a wall. The wet one may cross water, so it stops at a lava
+            // edge or a wall. The last crosses everything liquid, so it stops only where the mesh itself ends.
+            //
+            // Each gap between them is a different fact. dry against wet is the width of the water along this
+            // bearing -- the quantity "is this crossing worth it" actually depends on, which the seat has been
+            // deciding half-blind. wet against all is the one that matters more: if the ray that may not cross
+            // magma stops short of the ray that may, what stopped it was magma or slime, and it stopped at the
+            // burning edge.
             float const wet = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
-                NAV_GROUND | NAV_WATER) / MoveBlock::MARCH_MAX;
-            float const dry = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
-                NAV_GROUND) / MoveBlock::MARCH_MAX;
+                NAV_GROUND | NAV_WATER);
+            float const dry = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX, NAV_GROUND);
+            float const all = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
+                NAV_GROUND | NAV_WATER | NAV_MAGMA | NAV_SLIME);
 
             // The nearer of the two senses wins: the march sees drops the mesh calls walkable, the ray sees
             // walls the march is blind to, and a seat wants to know about whichever comes first.
-            if (query && startRef)
+            if (wet >= 0.0f && dry >= 0.0f)
             {
-                probe->Reach[bearing] = std::min(probe->Reach[bearing], wet);
-                probe->Shore[bearing] = std::min(dry, probe->Reach[bearing]);
+                probe->Reach[bearing] = std::min(probe->Reach[bearing], wet / MoveBlock::MARCH_MAX);
+                probe->Shore[bearing] = std::min(dry / MoveBlock::MARCH_MAX, probe->Reach[bearing]);
             }
             else
             {
-                // No mesh here. Fall back to what the height march saw, and say the dry reach is the reach --
-                // claiming water of unknown width would be worse than claiming none.
+                // No mesh here, or no answer from it. Fall back to what the height march saw, and say the dry
+                // reach is the reach -- claiming water of unknown width would be worse than claiming none.
                 probe->Shore[bearing] = water > 0.0f ? 0.0f : probe->Reach[bearing];
             }
+
+            // Where the burning starts, graded by how close it is: 1 at the seat's feet, falling to 0 at the
+            // far end of the march, and exactly 0 when there is none.
+            //
+            // This is the ray's answer and not the march's, because the march cannot answer it. It samples
+            // liquid at five fixed ranges, so a lava edge at nine yards falls between the cells at six and at
+            // twelve and reads as no lava at all -- and worse, if the twelve-yard cell lands past the edge it
+            // returns no height, which the march reports as a drop. That is a seat walking into lava believing
+            // it is stepping off a ledge. The mesh is built from the same liquid data, so when it answers it
+            // answers about the same lava, only continuously and at the true edge.
+            if (all >= 0.0f && wet >= 0.0f)
+            {
+                // BURN_EDGE_MARGIN guards float noise between two rays cast from one origin; it is not the
+                // mesh's own 1.8 yd simplification error, which both rays share and which therefore cancels.
+                probe->Burns[bearing] = all > wet + MoveBlock::BURN_EDGE_MARGIN
+                    ? 1.0f - std::clamp(wet / MoveBlock::MARCH_MAX, 0.0f, 1.0f)
+                    : 0.0f;
+            }
+            // else: no mesh answer, so the march's own flag stands as written, coarse but not silent.
         }
 
         // How much room the seat has, and which way is out. One query, in the same refresh as the rays and from
@@ -407,13 +486,10 @@ namespace
             }
         }
 
-        // Whether a jump would go anywhere, cached with the rest. The mask reads this; the press re-checks it,
-        // because the cache is up to half a bearing of turning out of date and a stale yes is a seat in the air
-        // over nothing.
-        {
-            Position landing;
-            probe->CanJump = !bot->IsFalling() && JumpLanding(bot, facing, landing);
-        }
+        // Whether a jump would go anywhere, cached with the rest. The mask reads this; the press re-checks it
+        // properly, because the cache is up to half a bearing of turning out of date and a stale yes is a seat
+        // in the air over nothing.
+        probe->CanJump = !bot->IsFalling() && JumpLandingNear(query, bot, facing);
 
         probe->From.Relocate(bot);
         probe->Facing = facing;
@@ -600,7 +676,13 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
 
     // Everything a seat needs to place its feet, and nothing about whether it has an enemy: this block is the one
     // that still works when there is nothing to fight.
-    bool const canMove = bot && bot->IsAlive() && !bot->HasUnitState(Encoding::IMMOBILE_STATES);
+    // A jump owns the feet until it lands. Every movement action begins by calling DisableSpline, so a step or
+    // a second jump pressed mid-arc would cancel the parabola from wherever the seat had got to and leave it
+    // walking on air -- and the core's own IsFalling cannot see this coming, because MoveSplineFlag's
+    // EnableParabolic clears the Falling bit it tests. The arc is a known 825 ms, so the honest fix is to hold
+    // the clock ourselves and mask the feet for as long as they are not under the seat.
+    bool const inFlight = view.Probe && view.NowMs < view.Probe->JumpUntilMs;
+    bool const canMove = bot && bot->IsAlive() && !bot->HasUnitState(Encoding::IMMOBILE_STATES) && !inFlight;
     bool const airborne = Airborne(bot);
 
     if (bot)
@@ -755,7 +837,7 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
     // A jump is legs, so it goes with the other movement: on the ground, not already in the air, and only
     // where the cached probe found somewhere to land. Apply checks the landing again before it commits.
     allowed[ACTION_JUMP] = canMove && !airborne && bot && !bot->IsFalling()
-        && view.Probe && view.Probe->CanJump ? 1 : 0;
+        && view.Probe && view.Probe->CanJump ? 1 : 0;   // canMove already excludes an arc still in the air
 
     // Pitch only means something off the ground. On foot the ground decides the seat's height, so the three
     // actions are masked rather than merely useless -- a masked action cannot be explored into.
@@ -862,9 +944,12 @@ void Animus::Curriculum::MoveBlock::Apply(SeatView& view, uint32 local, SeatActi
         if (bot->IsFalling() || !JumpLanding(bot, view.Facing, landing))
             return;
 
-        // The feet stop doing whatever they were doing: a jump is the whole move for as long as it lasts.
+        // The feet stop doing whatever they were doing: a jump is the whole move for as long as it lasts, and
+        // the clock that says so is what keeps the next decision from pressing a step and cancelling the arc.
         view.HeldBearing = 0xFF;
         view.Option->Stop(SeatOptionKind::MoveBearing);
+        if (view.Probe)
+            view.Probe->JumpUntilMs = view.NowMs + JumpFlightMs();
         Encoding::JumpTo(bot, landing.GetPositionX(), landing.GetPositionY(), landing.GetPositionZ(),
             std::max(1.0f, bot->GetSpeed(MOVE_RUN)), JUMP_SPEED_Z, &view.Facing);
     }

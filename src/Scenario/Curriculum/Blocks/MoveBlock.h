@@ -167,12 +167,20 @@ namespace Animus::Curriculum
             /// the whole encoding -- equal means a wall or a cliff (or a lava edge, which OBS_BURNS_FIRST names),
             /// and shore short of reach means water that many yards away and that many wide.
             OBS_SHORE_FIRST         = 20 + 3 * BEARING_COUNT,
-            /// **Whether what lies along each bearing is liquid that burns** -- magma or slime.
+            /// **How near the liquid that burns is** along each bearing -- magma or slime -- as 1 at the
+            /// seat's feet falling to 0 at the far end of the march, and exactly 0 where there is none.
             ///
             /// Reported apart from water because they are not the same lesson: water is somewhere to go and be
             /// slowed, and magma is somewhere to die. Both come back as no reach, so without this the seat cannot
             /// tell a lava lake from a cliff, and the arena that teaches crossing one at its narrow point has
             /// nothing to teach with.
+            ///
+            /// It is a distance and not a flag because a flag was a lottery. It used to be sampled from the
+            /// liquid under five fixed ranges, so an edge at nine yards sat between the cells at six and twelve
+            /// and reported nothing at all -- and if the twelve-yard cell landed past the edge it returned no
+            /// height, which the march read as a drop. A seat could walk into lava believing it was stepping off
+            /// a ledge. It now comes from a third ray whose filter may cross magma: where that one runs past the
+            /// ray that may not, the shorter one stopped at the burning edge.
             OBS_BURNS_FIRST         = 20 + 4 * BEARING_COUNT,
             /// Water it is already in. Whether it is in it, whether its head is under it, and how long its head
             /// has been under -- against the breath a character has, and zero for one that does not need to
@@ -314,6 +322,12 @@ namespace Animus::Curriculum
         /// which no path will ever cross because off-mesh connections are the only thing that could and the
         /// shipped config declares two in the whole world.
         static constexpr float JUMP_SPEED_Z = 7.955f;
+
+        /// How much further the ray that may cross magma must run than the ray that may not, before the gap
+        /// between them is called a burning edge rather than float noise. Both rays start from one polygon and
+        /// share the mesh's 1.8 yd simplification error, so that error cancels and this only has to cover the
+        /// arithmetic.
+        static constexpr float BURN_EDGE_MARGIN = 0.5f;
         /// What a character's breath is worth, for OBS_SUBMERGED_TIME. A held breath is about a minute in this
         /// expansion; the number only has to be the right size for the feature to mean something.
         static constexpr float BREATH_SECONDS = 60.0f;

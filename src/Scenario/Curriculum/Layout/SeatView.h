@@ -94,8 +94,9 @@ namespace Animus::Curriculum
         float Reach[8] = {};                    // distance to the first obstruction along each bearing / MARCH_MAX
         float Step[8] = {};                     // the height change that stopped it, signed, / MAX_STEP
         float Shore[8] = {};                    // how far dry ground runs that way / MARCH_MAX
-        float Burns[8] = {};                    // it ran into magma or slime
+        float Burns[8] = {};                    // how near the magma or slime is, 1 at the feet, 0 for none
         bool CanJump = false;                   // a jump along Facing had somewhere to land when measured
+        uint64 JumpUntilMs = 0;                 // a jump launched from here is still in the air until this clock
         float Clearance = 1.0f;                 // yards to the nearest edge of walkable space / CLEARANCE_RANGE
         float ClearanceSin = 0.0f;              // and which way is out, in the seat's frame when it was measured
         float ClearanceCos = 0.0f;

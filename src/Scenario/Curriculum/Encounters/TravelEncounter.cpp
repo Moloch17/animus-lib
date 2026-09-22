@@ -65,6 +65,13 @@ namespace
     constexpr float INDOOR_SEARCH = 12.0f;
     /// WMO group flag 0x8: this part of the building is open to the sky. Map::GetFullTerrainStatusForPosition
     /// reads the same bit to decide whether a unit is outdoors.
+    /// The WMO group's own "this group is outdoors" bit.
+    ///
+    /// Knowingly the weaker of the two tests the core itself uses. GetFullTerrainStatusForPosition also consults
+    /// the WMO area table's flags -- bit 2 forces indoors, bit 4 forces outdoors -- and either can overrule the
+    /// group bit. An inn whose area table says indoors while its group flag does not would be turned down here.
+    /// That costs a spawn point, never a wrong one, so it stays the test: this code is choosing where to put an
+    /// objective, and refusing a real room is cheap while accepting a hillside is not.
     constexpr uint32 WMO_GROUP_OUTDOORS = 0x8;
     constexpr float BODY_HEIGHT = 2.0f;             // for the water check
 }
