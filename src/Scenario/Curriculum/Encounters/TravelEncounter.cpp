@@ -25,6 +25,7 @@
 #include "Player.h"
 #include "Random.h"
 #include "SeatView.h"
+#include "MoveBlock.h"
 #include "TravelBlock.h"
 #include <algorithm>
 #include <cmath>
@@ -69,7 +70,7 @@ Animus::Curriculum::TravelEncounter::TravelEncounter(StageScenario& scenario, ui
 std::vector<Animus::Curriculum::RewardTerm> Animus::Curriculum::TravelEncounter::RewardTerms() const
 {
     return { RewardTerm::StepCost, RewardTerm::Progress, RewardTerm::Arrive, RewardTerm::DamageTaken,
-        RewardTerm::Death };
+        RewardTerm::Death, RewardTerm::Clearance };
 }
 
 void Animus::Curriculum::TravelEncounter::AddEpisodeInfo(EpisodeInfoTable& table)
@@ -502,6 +503,22 @@ void Animus::Curriculum::TravelEncounter::Reward(Env& env, uint32 seatIndex, Pla
     if (travel.LastDistance >= 0.0f && !travel.Arrived)
         ledger.Add(RewardTerm::Progress, tuning.Progress * (travel.LastDistance - distance) / 100.0f);
     travel.LastDistance = distance;
+
+    // Room to move, charged by the second like a hazard and capped the same way. A seat scraping a wall is not
+    // doing anything wrong in open country -- there is nothing out there to scrape -- but it is how a seat wedges
+    // itself in a doorway, and the charge has to stay small enough that going through the doorway still plainly
+    // wins. Measured off the seat's own probe, so it costs nothing extra to ask.
+    if (!travel.Arrived && bot->IsAlive() && stepMs)
+    {
+        float const clearance = seat.Probe.Clearance * MoveBlock::CLEARANCE_RANGE;
+        if (tuning.ClearanceMargin > 0.0f && clearance < tuning.ClearanceMargin)
+        {
+            float const seconds = float(stepMs) / 1000.0f;
+            float const crowding = (tuning.ClearanceMargin - clearance) / tuning.ClearanceMargin;
+            float const room = std::max(0.0f, tuning.ClearanceMax + seat.Rewards.Episode(RewardTerm::Clearance));
+            ledger.Add(RewardTerm::Clearance, -std::min(tuning.Clearance * seconds * crowding, room));
+        }
+    }
 
     seat.Combat.DamageTaken += env.StepStats[seatIndex].DamageTaken;
     ledger.Add(RewardTerm::DamageTaken, -tuning.DamageTaken * seat.LastStepDamageTaken);

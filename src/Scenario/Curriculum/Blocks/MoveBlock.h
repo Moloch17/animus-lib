@@ -95,6 +95,10 @@ namespace Animus::Curriculum
             ACTION_PITCH_UP,
             ACTION_PITCH_DOWN,
             ACTION_PITCH_LEVEL,
+            /// Jump along the heading it is facing. The one move that leaves the navmesh, and therefore the one
+            /// the pathfinder can never propose: a route is built from polygons that touch, and a gap has none.
+            /// A seat that jumps does it on what it can see, against the route it was given.
+            ACTION_JUMP,
             ACTION_COUNT
         };
 
@@ -149,16 +153,20 @@ namespace Animus::Curriculum
             /// descent as forbidden. It used to be reported straight ahead only, so seven of the eight bearings
             /// had no sign at all.
             OBS_STEP_FIRST          = 20 + 2 * BEARING_COUNT,
-            /// **Whether what lies along each bearing is water**, in the same frame as the ground probe.
+            /// **How far dry ground runs along each bearing**, against OBS_GROUND_FIRST's "how far anything
+            /// runs" -- so the gap between the two is the width of the water that way.
             ///
-            /// Water is not ground and it is not a wall, and the ground probe alone cannot say which it is
-            /// looking at: mmaps drops the terrain under real liquid and a lake bed is metres below the band a
-            /// step is judged in, so the probe reported every body of water as reach 0 -- a cliff. The seat was
-            /// being taught that the one route it might swim was impassable, and in 326 sampled decisions across
-            /// a whole run no seat ever once entered water: they walked to the line where the ground stops and
-            /// along it. This is what lets a crossing be seen before it is stood in, and OBS_SWIM_SPEED is what
-            /// prices it.
-            OBS_WATER_FIRST         = 20 + 3 * BEARING_COUNT,
+            /// This was a flag: "there is water somewhere along this bearing", sampled at five points. It said
+            /// nothing about how far off the shore was or how far across the water went, and the width is
+            /// precisely what deciding to swim depends on. The seat had one global number for that (OBS_DETOUR,
+            /// computed once when the episode was built) and nothing directional at all -- it was choosing
+            /// whether to cross while unable to see how wide the crossing was.
+            ///
+            /// Both come from the same navmesh raycast under different filters: NAV_GROUND alone stops at the
+            /// shore, NAV_GROUND | NAV_WATER swims on and stops at the far side. Reading the pair together is
+            /// the whole encoding -- equal means a wall or a cliff (or a lava edge, which OBS_BURNS_FIRST names),
+            /// and shore short of reach means water that many yards away and that many wide.
+            OBS_SHORE_FIRST         = 20 + 3 * BEARING_COUNT,
             /// **Whether what lies along each bearing is liquid that burns** -- magma or slime.
             ///
             /// Reported apart from water because they are not the same lesson: water is somewhere to go and be
@@ -209,7 +217,28 @@ namespace Animus::Curriculum
             /// world, and a seat that cannot tell which one it is holding cannot decide to stop holding it.
             OBS_FACING_MODE_FIRST   = 29 + 5 * BEARING_COUNT,
             OBS_FACING_MODE_COUNT   = 5,
-            OBS_COUNT               = 34 + 5 * BEARING_COUNT
+            /// **How much room the seat has**: yards to the nearest edge of walkable space, over
+            /// CLEARANCE_RANGE, and which way is out -- sine and cosine of the direction away from it, in the
+            /// seat's own frame.
+            ///
+            /// The bearings say how far it could go each way; this says how close the nearest thing already is,
+            /// which is a different question and the one that matters in a corridor. It is one
+            /// dtNavMeshQuery::findDistanceToWall, which returns the distance, the point and a normal pointing
+            /// back at the seat -- so the direction out comes free with the distance.
+            ///
+            /// Measured against the navmesh, which rcErodeWalkableArea already shrank by one agent radius
+            /// (walkableRadius 2 cells, about 0.53 yd), and whose edges are simplified to within
+            /// maxSimplificationError (1.8 yd). It is a coarse signal by construction: it shapes where the seat
+            /// puts itself, and is never allowed to forbid a move -- a doorway is narrower than any margin worth
+            /// keeping in open ground.
+            OBS_CLEARANCE           = 34 + 5 * BEARING_COUNT,
+            OBS_CLEARANCE_SIN       = 35 + 5 * BEARING_COUNT,
+            OBS_CLEARANCE_COS       = 36 + 5 * BEARING_COUNT,
+            /// Whether a jump would be taken if it were pressed: on the ground, not already falling, and with
+            /// somewhere to land. A masked action the seat cannot see the reason for is state it cannot learn
+            /// around.
+            OBS_CAN_JUMP            = 37 + 5 * BEARING_COUNT,
+            OBS_COUNT               = 38 + 5 * BEARING_COUNT
         };
 
         /// How far ahead a held bearing aims each decision. Far enough that the seat is still walking when the next
@@ -217,10 +246,19 @@ namespace Animus::Curriculum
         /// that the path is recomputed against ground the seat can see.
         static constexpr float STEP_YARDS = 8.0f;
 
-        /// How far a held turn swings the seat each decision. 45 degrees per 250 ms decision is 180 degrees a
-        /// second, which is the game's own keyboard turn rate -- a seat that turns faster than a player can is not
-        /// playing the same game.
-        static constexpr float TURN_STEP = 0.7853982f;          // 45 degrees
+        /// How far a held turn swings the seat each decision.
+        ///
+        /// This was 45 degrees -- exactly the spacing between two bearings -- which meant the turn could not do
+        /// the one thing the block's own documentation claims for it. Facing starts at the seat's spawn
+        /// orientation, a turn adds a multiple of 45, and a bearing subtracts one, so every heading the seat
+        /// could ever walk was `spawn + k * 45`: a lattice. FACE_OBJECTIVE and FACE_TARGET were the only escapes,
+        /// because they snap the facing to an exact world angle -- which is why a trained policy found exactly
+        /// one strategy (face the objective, hold forward) and nothing else worked.
+        ///
+        /// 15 degrees a decision matches PITCH_STEP and is 60 degrees a second, well inside what a player does
+        /// with a mouse. Every heading is now reachable, which is what threading a doorway off the objective's
+        /// axis requires.
+        static constexpr float TURN_STEP = 0.2617994f;          // 15 degrees
         /// The same for looking up and down, and how far from level it may get. Finer than the turn because pitch
         /// is a smaller range doing more: the whole useful span is a dive and a climb.
         static constexpr float PITCH_STEP = 0.2617994f;         // 15 degrees
@@ -262,6 +300,20 @@ namespace Animus::Curriculum
         /// simply going uphill. Over a six yard gap that admits 5.5 yards of rise; over ten, 7.5.
         static constexpr float MARCH_SEARCH = 20.0f;
         static constexpr float MARCH_SLOPE = 0.5f;
+        /// How far out clearance is measured and reported against. Kept small on purpose: findDistanceToWall
+        /// searches outward through the polygon graph and the shared query has a 1024-node pool, and room
+        /// beyond a few yards is not a thing a seat needs to tell apart.
+        static constexpr float CLEARANCE_RANGE = 8.0f;
+        /// A player's jump, which is the only one worth having: up at JUMP_SPEED_Z against
+        /// Movement::gravity (19.29) is an apex of about 1.64 yards, and carried forward at run speed it covers
+        /// about 5.8. That is the whole envelope.
+        ///
+        /// It is worth being plain about what that buys. The navmesh is built with walkableClimb 6 cells --
+        /// about 1.60 yards -- so it already assumes the seat can step up everything a jump could clear, and
+        /// jumping gains almost nothing vertically. What it gains is horizontal: a gap the mesh does not bridge,
+        /// which no path will ever cross because off-mesh connections are the only thing that could and the
+        /// shipped config declares two in the whole world.
+        static constexpr float JUMP_SPEED_Z = 7.955f;
         /// What a character's breath is worth, for OBS_SUBMERGED_TIME. A held breath is about a minute in this
         /// expansion; the number only has to be the right size for the feature to mean something.
         static constexpr float BREATH_SECONDS = 60.0f;
@@ -284,7 +336,7 @@ namespace Animus::Curriculum
         /// spams it should pay.
         [[nodiscard]] bool IsMovement(uint32 local) const override
         {
-            return local <= ACTION_HALT || (local >= ACTION_TURN_LEFT && local <= ACTION_PITCH_LEVEL);
+            return local <= ACTION_HALT || (local >= ACTION_TURN_LEFT && local <= ACTION_JUMP);
         }
 
         /// A bearing has no fixed sense of toward or away: which way BEARING_FORWARD leads depends on where the seat

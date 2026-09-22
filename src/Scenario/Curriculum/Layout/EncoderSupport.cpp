@@ -762,6 +762,36 @@ namespace Animus::Curriculum::Encoding
         init.Launch();
     }
 
+    void JumpTo(Player* bot, float x, float y, float z, float speedXY, float speedZ, float const* facing)
+    {
+        // MotionMaster::MoveJump would do most of this, and cannot be used: MoveJumpTo refuses players outright
+        // ("this function may make players fall below map") and MoveJump sets no orientation-fixed flag, so the
+        // spline would go back to writing the direction of travel onto the seat's orientation -- the exact bug
+        // that made a held bearing spiral. A jump is built here for the same reason MoveTo is.
+        //
+        // No pathfinding, deliberately: a jump is the one move that leaves the navmesh, and asking the
+        // pathfinder to route it would either refuse it or walk the seat round. Whether there is anywhere to
+        // land is decided before this is called, because nothing here can undo a bad landing.
+        bot->GetMotionMaster()->Clear();
+        bot->DisableSpline();
+        if (facing)
+            bot->UpdatePosition(bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ(), *facing);
+
+        float const moveTimeHalf = speedZ / float(Movement::gravity);
+        float const maxHeight = -Movement::computeFallElevation(moveTimeHalf, false, -speedZ);
+
+        Movement::MoveSplineInit init(bot);
+        init.MoveTo(x, y, z, false);
+        init.SetParabolic(maxHeight, 0.0f);
+        init.SetVelocity(speedXY);
+        if (facing)
+        {
+            init.SetOrientationFixed(true);
+            init.SetFacing(*facing);
+        }
+        init.Launch();
+    }
+
     void FlyTo(Player* bot, float x, float y, float z, float const* facing)
     {
         // Deliberately NOT orientation-fixed, unlike MoveTo and SwimTo. SetFly puts the spline in Catmullrom

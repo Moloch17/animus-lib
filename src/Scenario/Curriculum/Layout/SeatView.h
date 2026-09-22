@@ -93,8 +93,12 @@ namespace Animus::Curriculum
     {
         float Reach[8] = {};                    // distance to the first obstruction along each bearing / MARCH_MAX
         float Step[8] = {};                     // the height change that stopped it, signed, / MAX_STEP
-        float Water[8] = {};                    // it ran into water it could swim
+        float Shore[8] = {};                    // how far dry ground runs that way / MARCH_MAX
         float Burns[8] = {};                    // it ran into magma or slime
+        bool CanJump = false;                   // a jump along Facing had somewhere to land when measured
+        float Clearance = 1.0f;                 // yards to the nearest edge of walkable space / CLEARANCE_RANGE
+        float ClearanceSin = 0.0f;              // and which way is out, in the seat's frame when it was measured
+        float ClearanceCos = 0.0f;
         Position From;                          // where it was marched from
         float Facing = 0.0f;                    // and which way the seat was looking at the time
         uint32 Ms = 0;

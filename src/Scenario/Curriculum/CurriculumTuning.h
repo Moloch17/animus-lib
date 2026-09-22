@@ -573,6 +573,13 @@ namespace Animus::Curriculum
             float DamageTaken = 1.0f;           // fraction of the bot's health (falls, what it rode past)
             float Death = 3.0f;
             float StepCost = 0.0002f;           // per decision
+            /// Room to move. Charged per second, scaled by how far inside ClearanceMargin the seat is, and
+            /// capped per episode at ClearanceMax so it can never approach what arriving is worth (Arrive 3.0).
+            /// The margin is deliberately wider than a doorway: the seat should prefer the middle of a corridor,
+            /// not refuse a door.
+            float Clearance = 0.08f;            // per second hard against the wall
+            float ClearanceMargin = 1.5f;       // yards; closer than this is charged
+            float ClearanceMax = 0.6f;          // most an episode may lose to it
         } Travel;
 
         /// The flag match (Warsong Gulch's rules between two seats).
@@ -840,6 +847,9 @@ namespace Animus::Curriculum
             f("Travel.DamageTaken", tuning.Travel.DamageTaken);
             f("Travel.Death", tuning.Travel.Death);
             f("Travel.StepCost", tuning.Travel.StepCost);
+            f("Travel.Clearance", tuning.Travel.Clearance);
+            f("Travel.ClearanceMargin", tuning.Travel.ClearanceMargin);
+            f("Travel.ClearanceMax", tuning.Travel.ClearanceMax);
 
             f("Flag.BaseMin", tuning.Flag.BaseMin);
             f("Flag.BaseMax", tuning.Flag.BaseMax);

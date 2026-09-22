@@ -21,7 +21,11 @@
 #include "Layout.h"
 #include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
+#include "DetourExtended.h"
+#include "DetourNavMeshQuery.h"
 #include "Map.h"
+#include "MapCollisionData.h"
+#include "MapDefines.h"
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
 #include "Player.h"
@@ -38,6 +42,7 @@ namespace
     using Animus::Curriculum::SeatOptionKind;
 
     constexpr uint32 MOVE_POINT_ID = 0x4D56;    // "MV": this block's spline, distinct from the duel block's
+    constexpr int NAV_RAY_POLYS = 16;           // polygons a single bearing's raycast may cross
     constexpr float YARD_SCALE = 40.0f;         // distances are reported as a fraction of this
     constexpr float OBJECTIVE_SCALE = 500.0f;   // an objective is further off than anything else it looks at
     constexpr float RUN_SPEED = 7.0f;           // yards a second, unmounted and unhasted (TravelBlock's)
@@ -114,6 +119,84 @@ namespace
         }
     }
 
+    /// How far the seat could walk along `heading` before it leaves the navmesh, up to `range`.
+    ///
+    /// This is the sense the block did not have. MarchBearing samples the *height* of the ground at five points
+    /// and blocks on a change between two of them, so a vertical wall standing on a flat floor returns the same
+    /// z at six yards and at twelve: the step is zero, nothing blocks, and the ray reports clear ground straight
+    /// through the wall. It detected slopes and drops, never obstacles. Outdoors that passes, because a cliff is
+    /// a height change; indoors every wall, door frame and table is a vertical face on a level floor and the
+    /// seat walked into all of them blind.
+    ///
+    /// A navmesh raycast stops where walkable space stops, which is what an obstacle is to a pair of legs. It is
+    /// also per-polygon, so unlike a height sample it cannot be confused by the storey above.
+    ///
+    /// **The filter is what makes this three senses instead of one.** dtNavMeshQuery::raycast tests
+    /// `filter->passFilter()` on every polygon it steps into, and the mesh carries liquid as its own area flags
+    /// (TerrainBuilder: water and ocean are NAV_WATER, magma NAV_MAGMA, slime NAV_SLIME). So NAV_GROUND alone
+    /// stops at the water's edge and gives the distance to the shore; NAV_GROUND | NAV_WATER crosses the water
+    /// and stops at the far side; and the difference between the two is how wide the water is that way -- which
+    /// is exactly what "is this crossing worth it" needs and what no observation has ever carried. Leaving magma
+    /// and slime out of both is what makes a lava edge a continuous distance rather than a flag sampled at five
+    /// points, which a seat could walk straight between.
+    ///
+    /// Flags are always set explicitly: a default-constructed dtQueryFilterExt includes 0xffff and would happily
+    /// cross slime, and the runtime's own filter never includes NAV_SLIME at all (GetNavTerrain folds slime into
+    /// NAV_MAGMA), so neither default is the one wanted here.
+    float NavRay(dtNavMeshQuery const* query, dtPolyRef startRef, Player const* bot, float heading, float range,
+        uint16 includeFlags)
+    {
+        if (!query || !startRef)
+            return range;
+
+        dtQueryFilterExt filter;
+        filter.setIncludeFlags(includeFlags);
+        filter.setExcludeFlags(0);
+
+        // Detour's axes are {y, z, x}, not the world's (x, y, z). Getting this wrong is silent -- the ray simply
+        // goes somewhere else -- so it is written out rather than swizzled in passing.
+        float const from[3] = { bot->GetPositionY(), bot->GetPositionZ(), bot->GetPositionX() };
+        float const to[3] = { bot->GetPositionY() + range * std::sin(heading),
+            bot->GetPositionZ(),
+            bot->GetPositionX() + range * std::cos(heading) };
+
+        float t = 0.0f;
+        float normal[3] = { 0.0f, 0.0f, 0.0f };
+        dtPolyRef visited[NAV_RAY_POLYS];
+        int count = 0;
+        if (dtStatusFailed(query->raycast(startRef, from, to, &filter, &t, normal, visited, &count,
+            NAV_RAY_POLYS)))
+            return range;
+
+        // Detour reports t = FLT_MAX when the ray ran the whole way without leaving the mesh.
+        return t >= 1.0f ? range : t * range;
+    }
+
+    /// Where a jump along `heading` would land, and whether that is anywhere worth landing.
+    ///
+    /// CanReachPositionAndGetValidCoords is the core's own test -- a Detour raycast plus the static and dynamic
+    /// collision trees, then walkability and slope -- and it rewrites the coordinates to the first valid point
+    /// it finds. That is what stops a seat jumping off the world, which the core warns about in as many words
+    /// where it refuses to let a player use MoveJumpTo at all.
+    bool JumpLanding(Player* bot, float heading, Position& landing)
+    {
+        Map* map = bot->GetMap();
+        if (!map)
+            return false;
+
+        float const speedXY = std::max(1.0f, bot->GetSpeed(MOVE_RUN));
+        float const range = 2.0f * (MoveBlock::JUMP_SPEED_Z / float(Movement::gravity)) * speedXY;
+
+        float x = bot->GetPositionX() + range * std::cos(heading);
+        float y = bot->GetPositionY() + range * std::sin(heading);
+        float z = bot->GetPositionZ();
+        if (!map->CanReachPositionAndGetValidCoords(bot, x, y, z, true, true))
+            return false;
+
+        landing.Relocate(x, y, z);
+        return true;
+    }
+
     /// March one bearing outward and say where it stops.
     ///
     /// This replaces a single height sample twelve yards out, compared against the seat's own feet. That sample
@@ -187,10 +270,13 @@ namespace
                 continue;
             }
 
-            // A generous search band, unlike the old probe's MAX_STEP one: the point is to find the ground and
-            // then judge it, rather than to call everything outside one step's reach invisible.
-            float const z = map->GetHeight(phase, x, y, previousZ + MoveBlock::MARCH_SEARCH, true,
-                MoveBlock::MARCH_SEARCH * 2.0f);
+            // Search from just above the last cell, downwards. The origin used to be twenty yards up, which is
+            // harmless in open country and wrong inside a building: Map::GetHeight casts a strictly downward ray
+            // from the z it is given, so starting above the ceiling returns the floor of the storey above and
+            // the seat is told it can walk there. Starting a step's height up finds the ground it could actually
+            // reach and nothing higher.
+            float const z = map->GetHeight(phase, x, y, previousZ + MoveBlock::MAX_STEP, true,
+                MoveBlock::MARCH_SEARCH);
             if (z <= INVALID_HEIGHT)
             {
                 // No ground within twenty yards either way: a long drop, or off the map. Reported as a drop,
@@ -248,9 +334,86 @@ namespace
                 return;
         }
 
+        // The seat's own polygon, once for all eight bearings. Extents match the core's own lookup in
+        // cs_mmaps; a seat standing somewhere the mesh does not cover simply gets no rays, and the height march
+        // still answers.
+        dtNavMeshQuery const* query = map->GetMapCollisionData().GetMMapData().GetNavMeshQuery();
+        dtPolyRef startRef = 0;
+        if (query)
+        {
+            dtQueryFilterExt filter;
+            filter.setIncludeFlags(NAV_GROUND | NAV_WATER);
+            filter.setExcludeFlags(0);
+            float const at[3] = { bot->GetPositionY(), bot->GetPositionZ(), bot->GetPositionX() };
+            float const extents[3] = { 3.0f, 5.0f, 3.0f };
+            if (dtStatusFailed(query->findNearestPoly(at, extents, &filter, &startRef, nullptr)))
+                startRef = 0;
+        }
+
         for (uint32 bearing = 0; bearing < MoveBlock::BEARING_COUNT; ++bearing)
-            MarchBearing(bot, map, HeadingOf(facing, bearing), probe->Reach[bearing], probe->Step[bearing],
-                probe->Water[bearing], probe->Burns[bearing]);
+        {
+            float const heading = HeadingOf(facing, bearing);
+            float water = 0.0f;
+            MarchBearing(bot, map, heading, probe->Reach[bearing], probe->Step[bearing], water,
+                probe->Burns[bearing]);
+
+            // Two rays. The dry one walks only ground, so it stops at a shore, a lava edge or a wall; the wet
+            // one may cross water, so it stops only at a lava edge or a wall. Where they differ, the difference
+            // is the width of the water along this bearing.
+            float const wet = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
+                NAV_GROUND | NAV_WATER) / MoveBlock::MARCH_MAX;
+            float const dry = NavRay(query, startRef, bot, heading, MoveBlock::MARCH_MAX,
+                NAV_GROUND) / MoveBlock::MARCH_MAX;
+
+            // The nearer of the two senses wins: the march sees drops the mesh calls walkable, the ray sees
+            // walls the march is blind to, and a seat wants to know about whichever comes first.
+            if (query && startRef)
+            {
+                probe->Reach[bearing] = std::min(probe->Reach[bearing], wet);
+                probe->Shore[bearing] = std::min(dry, probe->Reach[bearing]);
+            }
+            else
+            {
+                // No mesh here. Fall back to what the height march saw, and say the dry reach is the reach --
+                // claiming water of unknown width would be worse than claiming none.
+                probe->Shore[bearing] = water > 0.0f ? 0.0f : probe->Reach[bearing];
+            }
+        }
+
+        // How much room the seat has, and which way is out. One query, in the same refresh as the rays and from
+        // the same polygon. The filter is the walkable set a seat actually uses, so a lava edge and a shoreline
+        // both count as an edge to keep off -- which is the honest answer for something on legs.
+        probe->Clearance = 1.0f;
+        probe->ClearanceSin = 0.0f;
+        probe->ClearanceCos = 0.0f;
+        if (query && startRef)
+        {
+            dtQueryFilterExt filter;
+            filter.setIncludeFlags(NAV_GROUND | NAV_WATER);
+            filter.setExcludeFlags(0);
+            float const at[3] = { bot->GetPositionY(), bot->GetPositionZ(), bot->GetPositionX() };
+            float distance = 0.0f;
+            float hit[3] = { 0.0f, 0.0f, 0.0f };
+            float normal[3] = { 0.0f, 0.0f, 0.0f };
+            if (dtStatusSucceed(query->findDistanceToWall(startRef, at, MoveBlock::CLEARANCE_RANGE, &filter,
+                &distance, hit, normal)))
+            {
+                probe->Clearance = std::clamp(distance / MoveBlock::CLEARANCE_RANGE, 0.0f, 1.0f);
+                // hitNormal is normalize(centre - hit): it already points from the wall back at the seat, which
+                // is the way out. Detour's axes are {y, z, x}, so the world components are [2] and [0].
+                float const away = std::atan2(normal[0], normal[2]) - facing;
+                probe->ClearanceSin = std::sin(away);
+                probe->ClearanceCos = std::cos(away);
+            }
+        }
+
+        // Whether a jump would go anywhere, cached with the rest. The mask reads this; the press re-checks it,
+        // because the cache is up to half a bearing of turning out of date and a stale yes is a seat in the air
+        // over nothing.
+        {
+            Position landing;
+            probe->CanJump = !bot->IsFalling() && JumpLanding(bot, facing, landing);
+        }
 
         probe->From.Relocate(bot);
         probe->Facing = facing;
@@ -410,6 +573,8 @@ void Animus::Curriculum::MoveBlock::DescribeManifest(Layout const& /*layout*/, b
         ranges.push_back(double(range));
     block["march_ranges"] = std::move(ranges);
     block["march_max"] = double(MARCH_MAX);
+    block["clearance_range"] = double(CLEARANCE_RANGE);
+    block["jump_speed_z"] = double(JUMP_SPEED_Z);
 }
 
 std::string Animus::Curriculum::MoveBlock::ActionName(Layout const& /*layout*/, uint32 local) const
@@ -419,7 +584,7 @@ std::string Animus::Curriculum::MoveBlock::ActionName(Layout const& /*layout*/, 
         "move_forward", "move_forward_right", "move_right", "move_back_right",
         "move_back", "move_back_left", "move_left", "move_forward_left",
         "halt", "face_target", "face_heading", "face_hold", "face_objective",
-        "turn_left", "turn_right", "pitch_up", "pitch_down", "pitch_level",
+        "turn_left", "turn_right", "pitch_up", "pitch_down", "pitch_level", "jump",
     };
 
     return local < NAMES.size() ? NAMES[local] : std::string();
@@ -500,9 +665,17 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
                 {
                     out[OBS_GROUND_FIRST + bearing] = probe->Reach[bearing];
                     out[OBS_STEP_FIRST + bearing] = probe->Step[bearing];
-                    out[OBS_WATER_FIRST + bearing] = probe->Water[bearing];
+                    out[OBS_SHORE_FIRST + bearing] = probe->Shore[bearing];
                     out[OBS_BURNS_FIRST + bearing] = probe->Burns[bearing];
                 }
+
+            if (GroundProbe const* probe = view.Probe)
+            {
+                out[OBS_CLEARANCE] = probe->Clearance;
+                out[OBS_CLEARANCE_SIN] = probe->ClearanceSin;
+                out[OBS_CLEARANCE_COS] = probe->ClearanceCos;
+                out[OBS_CAN_JUMP] = probe->CanJump ? 1.0f : 0.0f;
+            }
         }
         else
             for (uint32 bearing = 0; bearing < BEARING_COUNT; ++bearing)
@@ -511,7 +684,8 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
                 // changes by nothing, and a seat that is swimming is surrounded by the water it is in. The march
                 // is dropped rather than kept, so the first one made after coming ashore is a fresh one.
                 out[OBS_GROUND_FIRST + bearing] = 1.0f;
-                out[OBS_WATER_FIRST + bearing] = bot->IsInWater() ? 1.0f : 0.0f;
+                out[OBS_SHORE_FIRST + bearing] = bot->IsInWater() ? 0.0f : 1.0f;
+                out[OBS_CLEARANCE] = 1.0f;
                 if (view.Probe)
                     view.Probe->Valid = false;
             }
@@ -577,6 +751,11 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
     bool const aimed = view.FacingMode == ACTION_FACE_TARGET || view.FacingMode == ACTION_FACE_OBJECTIVE;
     allowed[ACTION_TURN_LEFT] = canTurn && !aimed && view.Turning >= 0 ? 1 : 0;
     allowed[ACTION_TURN_RIGHT] = canTurn && !aimed && view.Turning <= 0 ? 1 : 0;
+
+    // A jump is legs, so it goes with the other movement: on the ground, not already in the air, and only
+    // where the cached probe found somewhere to land. Apply checks the landing again before it commits.
+    allowed[ACTION_JUMP] = canMove && !airborne && bot && !bot->IsFalling()
+        && view.Probe && view.Probe->CanJump ? 1 : 0;
 
     // Pitch only means something off the ground. On foot the ground decides the seat's height, so the three
     // actions are masked rather than merely useless -- a masked action cannot be explored into.
@@ -671,5 +850,22 @@ void Animus::Curriculum::MoveBlock::Apply(SeatView& view, uint32 local, SeatActi
         view.Pitch = 0.0f;
         view.PitchTurning = 0;
         view.Option->Stop(SeatOptionKind::MovePitch);
+        return;
+    }
+
+    if (local == ACTION_JUMP)
+    {
+        // Checked again here rather than trusted from the mask: the probe is refreshed every few yards, and a
+        // landing that was there when it was measured may not be there now. A jump with nowhere to land is not
+        // worth the one failure mode this action has.
+        Position landing;
+        if (bot->IsFalling() || !JumpLanding(bot, view.Facing, landing))
+            return;
+
+        // The feet stop doing whatever they were doing: a jump is the whole move for as long as it lasts.
+        view.HeldBearing = 0xFF;
+        view.Option->Stop(SeatOptionKind::MoveBearing);
+        Encoding::JumpTo(bot, landing.GetPositionX(), landing.GetPositionY(), landing.GetPositionZ(),
+            std::max(1.0f, bot->GetSpeed(MOVE_RUN)), JUMP_SPEED_Z, &view.Facing);
     }
 }
