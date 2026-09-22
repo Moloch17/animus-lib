@@ -1990,6 +1990,7 @@ Animus::Curriculum::SeatView Animus::Curriculum::StageScenario::ViewSeat(Env con
     view.PitchTurning = seat.PitchTurning;
     view.Pitch = seat.Pitch;
     view.Facing = seat.Facing;
+    view.Probe = &seat.Probe;
     view.SubmergedTime = seat.SubmergedSinceMs && env.EpisodeElapsedMs > seat.SubmergedSinceMs
         ? float(env.EpisodeElapsedMs - seat.SubmergedSinceMs) / 1000.0f : 0.0f;
     view.Build = &seat.Build;

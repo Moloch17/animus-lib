@@ -19,6 +19,7 @@
 #include "MoveBlock.h"
 #include "EncoderSupport.h"
 #include "Layout.h"
+#include <boost/json/array.hpp>
 #include <boost/json/object.hpp>
 #include "Map.h"
 #include "MotionMaster.h"
@@ -113,75 +114,148 @@ namespace
         }
     }
 
-    /// How far the seat could walk along `heading` before the ground stops cooperating: 1 for ground it could step
-    /// onto at PROBE_YARDS, falling to 0 for a wall or a drop. One height sample a bearing -- the same call
-    /// SnapToGround already makes every decision, eight times over rather than once.
-    float GroundReach(Player* bot, float heading, float* stepOut = nullptr, float* waterOut = nullptr,
-        float* burnsOut = nullptr)
+    /// March one bearing outward and say where it stops.
+    ///
+    /// This replaces a single height sample twelve yards out, compared against the seat's own feet. That sample
+    /// answered "is the point twelve yards that way roughly level with me", which is three different questions
+    /// short of the one a pair of legs is asking. It could not see past twelve yards, it read a gentle slope as
+    /// a wall because MAX_STEP was measured over the whole twelve, and a wall, a cliff, a lava lake and the edge
+    /// of the map all came back as the same 0.
+    ///
+    /// What comes back now is the distance to the first thing that stops the ray, which means the same at six
+    /// yards as at forty, plus what stopped it: the signed height change, whether there was water it could swim,
+    /// and whether there was liquid that burns. Each cell is judged against the cell before it, so ground that
+    /// climbs steadily stays walkable and only a real discontinuity blocks.
+    ///
+    /// Still geometry and not a route. Nothing here says which way to go.
+    void MarchBearing(Player* bot, Map* map, float heading, float& reachOut, float& stepOut, float& waterOut,
+        float& burnsOut)
     {
-        Map* map = bot ? bot->GetMap() : nullptr;   // non-const: Map::GetLiquidData is not a const member
+        reachOut = 1.0f;
+        stepOut = 0.0f;
+        waterOut = 0.0f;
+        burnsOut = 0.0f;
+
+        uint32 const phase = bot->GetPhaseMask();
+        float const collision = bot->GetCollisionHeight();
+        float const fromX = bot->GetPositionX();
+        float const fromY = bot->GetPositionY();
+        float const dx = std::cos(heading);
+        float const dy = std::sin(heading);
+
+        float previousZ = bot->GetPositionZ();
+        float previousRange = 0.0f;
+        float free = 0.0f;
+        float blockedStep = 0.0f;
+        float worstStep = 0.0f;
+        bool blocked = false;
+
+        for (uint32 cell = 0; cell < MoveBlock::MARCH_CELLS && !blocked; ++cell)
+        {
+            float const range = MoveBlock::MARCH_RANGES[cell];
+            float const gap = range - previousRange;
+            float const allowance = MoveBlock::MAX_STEP + gap * MoveBlock::MARCH_SLOPE;
+            float const x = fromX + range * dx;
+            float const y = fromY + range * dy;
+
+            // Liquid before ground, because the ground test cannot tell a lake from a cliff and would call it
+            // the latter: mmaps drops the terrain under real liquid, so GetHeight comes back INVALID_HEIGHT over
+            // any water worth swimming -- the same answer it gives for the edge of the map. Which liquid it is
+            // decides everything, and LiquidData::Flags is what carries it; Status only says how deep the stuff
+            // is, so a test on Status alone called magma "water" and handed the seat a lava lake to cross.
+            LiquidData const liquid = map->GetLiquidData(phase, x, y, previousZ, collision, {});
+            bool const liquidHere = liquid.Status != LIQUID_MAP_NO_WATER && liquid.Level > INVALID_HEIGHT
+                && liquid.Level >= previousZ - allowance;
+
+            if (liquidHere && (liquid.Flags & (MAP_LIQUID_TYPE_MAGMA | MAP_LIQUID_TYPE_SLIME)) != 0)
+            {
+                // Somewhere to die, not somewhere to go. The ray stops short of it, and the seat can tell this
+                // apart from a wall because burns says so.
+                burnsOut = 1.0f;
+                blocked = true;
+                break;
+            }
+
+            if (liquidHere && (liquid.Flags & (MAP_LIQUID_TYPE_WATER | MAP_LIQUID_TYPE_OCEAN)) != 0)
+            {
+                // Water is somewhere the seat can go, so the ray carries on across it. What it costs to go there
+                // is OBS_SWIM_SPEED's to say.
+                waterOut = 1.0f;
+                previousZ = liquid.Level;
+                previousRange = range;
+                free = range;
+                continue;
+            }
+
+            // A generous search band, unlike the old probe's MAX_STEP one: the point is to find the ground and
+            // then judge it, rather than to call everything outside one step's reach invisible.
+            float const z = map->GetHeight(phase, x, y, previousZ + MoveBlock::MARCH_SEARCH, true,
+                MoveBlock::MARCH_SEARCH * 2.0f);
+            if (z <= INVALID_HEIGHT)
+            {
+                // No ground within twenty yards either way: a long drop, or off the map. Reported as a drop,
+                // because that is what it is to something on legs.
+                blockedStep = -1.0f;
+                blocked = true;
+                break;
+            }
+
+            float const step = z - previousZ;
+            if (std::fabs(step) > allowance)
+            {
+                blockedStep = std::clamp(step / allowance, -1.0f, 1.0f);
+                blocked = true;
+                break;
+            }
+
+            if (std::fabs(step) > std::fabs(worstStep))
+                worstStep = step / allowance;
+
+            previousZ = z;
+            previousRange = range;
+            free = range;
+        }
+
+        reachOut = free / MoveBlock::MARCH_MAX;
+        // What stopped the ray if something did, and otherwise the steepest thing it walked over -- so a bearing
+        // that is clear but climbing still reads differently from one that is clear and flat.
+        stepOut = blocked ? blockedStep : std::clamp(worstStep, -1.0f, 1.0f);
+    }
+
+    /// Redo the march if it has stopped describing where the seat is standing, and say whether it is usable.
+    ///
+    /// Forty map queries against the eight the old probe made is too much to repeat every 250 ms for 128
+    /// environments, and it does not need repeating: the ground does not move, only the seat does. Movement is
+    /// the trigger that matters -- at seven yards a second a one-second-old march is seven yards stale and its
+    /// nearest cell is six -- with a turn threshold because the grid is egocentric, and a clock as a backstop.
+    void RefreshProbe(Animus::Curriculum::SeatView const& view, Player* bot, float facing)
+    {
+        Animus::Curriculum::GroundProbe* probe = view.Probe;
+        if (!probe)
+            return;
+
+        Map* map = bot->GetMap();   // non-const: Map::GetLiquidData is not a const member
         if (!map)
-            return 1.0f;
+            return;
 
-        float const x = bot->GetPositionX() + MoveBlock::PROBE_YARDS * std::cos(heading);
-        float const y = bot->GetPositionY() + MoveBlock::PROBE_YARDS * std::sin(heading);
-        float const from = bot->GetPositionZ();
-
-        // Water before ground, because the ground test cannot tell a lake from a cliff and would call it the
-        // latter. mmaps drops the terrain under real liquid and the bed is metres below the band a step is
-        // judged in, so GetHeight comes back INVALID_HEIGHT over any water worth swimming -- the same answer it
-        // gives for the edge of the map. Reported as its own feature and as walkable reach, because water is
-        // somewhere the seat can go; what it costs to go there is OBS_SWIM_SPEED's to say.
-        //
-        // Which liquid it is decides all of that, and LiquidData::Flags is what carries it: Status only says how
-        // deep the stuff is, so a test on Status alone called magma and slime "water" and handed the seat a lava
-        // lake as ground it could cross. Swimmable is water and ocean. Magma and slime are neither ground nor
-        // water but a way to die, so they read as no reach at all -- the same as a wall, which is the honest
-        // answer until a stage teaches crossing them at the narrow point.
-        LiquidData const liquid = map->GetLiquidData(bot->GetPhaseMask(), x, y, from,
-            bot->GetCollisionHeight(), {});
-        bool const liquidHere = liquid.Status != LIQUID_MAP_NO_WATER && liquid.Level > INVALID_HEIGHT
-            && liquid.Level >= from - MoveBlock::MAX_STEP;
-        bool const swimmable = liquidHere
-            && (liquid.Flags & (MAP_LIQUID_TYPE_WATER | MAP_LIQUID_TYPE_OCEAN)) != 0;
-        bool const burns = liquidHere && (liquid.Flags & (MAP_LIQUID_TYPE_MAGMA | MAP_LIQUID_TYPE_SLIME)) != 0;
-
-        if (waterOut)
-            *waterOut = swimmable ? 1.0f : 0.0f;
-        if (burnsOut)
-            *burnsOut = burns ? 1.0f : 0.0f;
-
-        if (burns)
+        if (probe->Valid)
         {
-            if (stepOut)
-                *stepOut = 0.0f;
-            return 0.0f;
+            float const moved = bot->GetExactDist(&probe->From);
+            float const turned = std::fabs(std::atan2(std::sin(facing - probe->Facing),
+                std::cos(facing - probe->Facing)));
+            if (moved < MoveBlock::MARCH_REFRESH_YARDS && turned < MoveBlock::MARCH_REFRESH_RADIANS
+                && view.NowMs - probe->Ms < MoveBlock::MARCH_REFRESH_MS)
+                return;
         }
 
-        if (swimmable)
-        {
-            if (stepOut)
-                *stepOut = 0.0f;
-            return 1.0f;
-        }
+        for (uint32 bearing = 0; bearing < MoveBlock::BEARING_COUNT; ++bearing)
+            MarchBearing(bot, map, HeadingOf(facing, bearing), probe->Reach[bearing], probe->Step[bearing],
+                probe->Water[bearing], probe->Burns[bearing]);
 
-        float const z = map->GetHeight(bot->GetPhaseMask(), x, y, from + MoveBlock::MAX_STEP, true,
-            MoveBlock::MAX_STEP * 2.0f);
-
-        if (z <= INVALID_HEIGHT)
-        {
-            if (stepOut)
-                *stepOut = 0.0f;
-            return 0.0f;
-        }
-
-        float const step = z - from;
-        if (stepOut)
-            *stepOut = std::clamp(step / MoveBlock::MAX_STEP, -1.0f, 1.0f);
-
-        // A wall and a cliff are both "not that way" for something on legs, so the size of the change is what is
-        // reported rather than its sign; the sign is reported separately, straight ahead only.
-        return std::max(0.0f, 1.0f - std::fabs(step) / MoveBlock::MAX_STEP);
+        probe->From.Relocate(bot);
+        probe->Facing = facing;
+        probe->Ms = view.NowMs;
+        probe->Valid = true;
     }
 
     /// One step of a held turn, and one of a held pitch. Exactly once per decision, whoever asks: BeforeApply
@@ -338,6 +412,11 @@ void Animus::Curriculum::MoveBlock::DescribeManifest(Layout const& /*layout*/, b
     block["pitch_step"] = double(PITCH_STEP);
     block["pitch_max"] = double(PITCH_MAX);
     block["probe_yards"] = double(PROBE_YARDS);
+    boost::json::array ranges;
+    for (float range : MARCH_RANGES)
+        ranges.push_back(double(range));
+    block["march_ranges"] = std::move(ranges);
+    block["march_max"] = double(MARCH_MAX);
 }
 
 std::string Animus::Curriculum::MoveBlock::ActionName(Layout const& /*layout*/, uint32 local) const
@@ -410,31 +489,38 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
             out[OBS_OBJECTIVE] = 1.0f;
             out[OBS_OBJECTIVE_BEARING_SIN] = std::sin(relative);
             out[OBS_OBJECTIVE_BEARING_COS] = std::cos(relative);
-            out[OBS_OBJECTIVE_DISTANCE] = std::min(1.0f, bot->GetExactDist2d(&view.Objective) / OBJECTIVE_SCALE);
+            float const range = bot->GetExactDist2d(&view.Objective);
+            out[OBS_OBJECTIVE_DISTANCE] = std::min(1.0f, range / OBJECTIVE_SCALE);
+            // The same distance again, over forty yards rather than five hundred. Every episode this stage loses
+            // ends twenty to forty-five yards short, which is a twelfth of the coarse feature's range and half
+            // of this one's.
+            out[OBS_OBJECTIVE_NEAR] = std::min(1.0f, range / YARD_SCALE);
         }
 
         // What the ground is like each way it could go. Skipped in the air and in the water, where the ground is
         // not what the seat is steering against and the samples would only report the bottom.
         if (!airborne)
         {
-            for (uint32 bearing = 0; bearing < BEARING_COUNT; ++bearing)
-            {
-                float step = 0.0f;
-                float wet = 0.0f;
-                float hot = 0.0f;
-                out[OBS_GROUND_FIRST + bearing] = GroundReach(bot, HeadingOf(facing, bearing), &step, &wet, &hot);
-                out[OBS_STEP_FIRST + bearing] = step;
-                out[OBS_WATER_FIRST + bearing] = wet;
-                out[OBS_BURNS_FIRST + bearing] = hot;
-            }
+            RefreshProbe(view, bot, facing);
+            if (GroundProbe const* probe = view.Probe)
+                for (uint32 bearing = 0; bearing < BEARING_COUNT; ++bearing)
+                {
+                    out[OBS_GROUND_FIRST + bearing] = probe->Reach[bearing];
+                    out[OBS_STEP_FIRST + bearing] = probe->Step[bearing];
+                    out[OBS_WATER_FIRST + bearing] = probe->Water[bearing];
+                    out[OBS_BURNS_FIRST + bearing] = probe->Burns[bearing];
+                }
         }
         else
             for (uint32 bearing = 0; bearing < BEARING_COUNT; ++bearing)
             {
                 // Off the ground there is nothing underfoot to walk onto or refuse: every way is open, the ground
-                // changes by nothing, and a seat that is swimming is surrounded by the water it is in.
+                // changes by nothing, and a seat that is swimming is surrounded by the water it is in. The march
+                // is dropped rather than kept, so the first one made after coming ashore is a fresh one.
                 out[OBS_GROUND_FIRST + bearing] = 1.0f;
                 out[OBS_WATER_FIRST + bearing] = bot->IsInWater() ? 1.0f : 0.0f;
+                if (view.Probe)
+                    view.Probe->Valid = false;
             }
 
         out[OBS_IN_WATER] = bot->IsInWater() ? 1.0f : 0.0f;
@@ -447,6 +533,11 @@ void Animus::Curriculum::MoveBlock::Observe(SeatView const& view, float* obs, ui
     // The way round against the way through, and whether the legs are getting anywhere. All three are the
     // scenario's to measure -- one at the episode's build, two over the last second -- because none of them can
     // be seen from a probe of any length.
+    // Which way it has told itself to look. The FACE_* actions are masked while they are the mode being held, so
+    // without this the policy could only infer its own steering state from what it was forbidden to press.
+    out[OBS_FACING_MODE_FIRST + (view.FacingMode >= ACTION_FACE_TARGET && view.FacingMode <= ACTION_FACE_OBJECTIVE
+        ? 1 + view.FacingMode - ACTION_FACE_TARGET : 0)] = 1.0f;
+
     out[OBS_DETOUR] = std::clamp(view.Detour / 4.0f, 0.0f, 1.0f);
     out[OBS_MOVE_RATE] = std::clamp(view.MoveRate, 0.0f, 1.0f);
     out[OBS_CLOSE_RATE] = std::clamp(view.CloseRate, -1.0f, 1.0f);

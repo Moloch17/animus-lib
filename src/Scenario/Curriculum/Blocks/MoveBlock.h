@@ -194,7 +194,22 @@ namespace Animus::Curriculum
             /// trip and ending as far away as it started.
             OBS_MOVE_RATE           = 26 + 5 * BEARING_COUNT,
             OBS_CLOSE_RATE          = 27 + 5 * BEARING_COUNT,
-            OBS_COUNT               = 28 + 5 * BEARING_COUNT
+            /// **The last forty yards, at a resolution that can see them.** The same distance as
+            /// OBS_OBJECTIVE_DISTANCE but over YARD_SCALE rather than OBJECTIVE_SCALE, so arriving
+            /// (TravelBlock::ARRIVE_DISTANCE, 6 yards) sits at 0.15 instead of 0.012 and the 20-45 yard band
+            /// every lost episode dies in spans half the range instead of a twelfth of it. A coarse feature and
+            /// a fine one, which is the only way one number covers both five hundred yards and six.
+            OBS_OBJECTIVE_NEAR      = 28 + 5 * BEARING_COUNT,
+            /// **Which way it has told itself to look**, one-hot: none chosen, then the four FACE_* modes in
+            /// their action order.
+            ///
+            /// A FACE_* is masked once it is the mode being held, so until now the action mask was the only
+            /// evidence the policy had of a state it cannot otherwise perceive -- and a mask is not an
+            /// observation. Facing the objective and facing where you are going are different beliefs about the
+            /// world, and a seat that cannot tell which one it is holding cannot decide to stop holding it.
+            OBS_FACING_MODE_FIRST   = 29 + 5 * BEARING_COUNT,
+            OBS_FACING_MODE_COUNT   = 5,
+            OBS_COUNT               = 34 + 5 * BEARING_COUNT
         };
 
         /// How far ahead a held bearing aims each decision. Far enough that the seat is still walking when the next
@@ -212,8 +227,41 @@ namespace Animus::Curriculum
         static constexpr float PITCH_MAX = 1.0471976f;          // 60 degrees
         /// How far ahead the ground is read along each bearing, and the height change a seat can walk up or drop
         /// down without it counting as a wall.
+        ///
+        /// PROBE_YARDS was one sample, twelve yards out, compared against the seat's own height: "is the point
+        /// twelve yards that way roughly level with me". That collapses a gentle rise into a wall -- three
+        /// yards of climb over twelve reads as no reach at all -- and it cannot see anything at thirteen. It is
+        /// kept as the nearest march cell and as the manifest's idea of a probe.
         static constexpr float PROBE_YARDS = 12.0f;
         static constexpr float MAX_STEP = 2.5f;
+        /// **How far the seat can see along a bearing, and where it looks on the way.** Five cells rather than
+        /// one, each judged against the cell before it, so a slope is a slope and only a real step is a step.
+        /// What is reported is the distance to the first thing that stops the ray, which is a number that means
+        /// the same at six yards and at forty -- unlike the old reach, where a wall and a cliff and the edge of
+        /// the map were all 0 and everything else was 1.
+        ///
+        /// Geometry, not a route: the march says what is there, and choosing a bearing stays the policy's job.
+        static constexpr uint32 MARCH_CELLS = 5;
+        static constexpr float MARCH_RANGES[MARCH_CELLS] = { 6.0f, 12.0f, 20.0f, 30.0f, 40.0f };
+        static constexpr float MARCH_MAX = 40.0f;
+        /// When a march stops describing where the seat is. Forty map queries is too many to repeat every
+        /// decision, and it does not have to be repeated: the ground does not move. Redone when the seat has
+        /// walked MARCH_REFRESH_YARDS from where it was marched, turned MARCH_REFRESH_RADIANS from the heading
+        /// it was marched along, or MARCH_REFRESH_MS have passed -- movement first, because at seven yards a
+        /// second a clock alone goes stale inside the nearest cell.
+        static constexpr float MARCH_REFRESH_YARDS = 3.0f;
+        static constexpr float MARCH_REFRESH_RADIANS = 0.3926991f;      // half a bearing, 22.5 degrees
+        static constexpr uint32 MARCH_REFRESH_MS = 500;
+        /// How far up or down the ground is looked for at a march cell, and how much of a rise or drop between
+        /// two cells is still walkable.
+        ///
+        /// The old probe looked for ground only within MAX_STEP of the seat and called everything else a wall,
+        /// which is why broken ground read as cliffs in every direction: three yards of climb over twelve was
+        /// "no reach at all". A cell is judged against the cell before it now, and the allowance grows with the
+        /// gap between them -- MAX_STEP for the discontinuity a step really is, plus MARCH_SLOPE for the ground
+        /// simply going uphill. Over a six yard gap that admits 5.5 yards of rise; over ten, 7.5.
+        static constexpr float MARCH_SEARCH = 20.0f;
+        static constexpr float MARCH_SLOPE = 0.5f;
         /// What a character's breath is worth, for OBS_SUBMERGED_TIME. A held breath is about a minute in this
         /// expansion; the number only has to be the right size for the feature to mean something.
         static constexpr float BREATH_SECONDS = 60.0f;

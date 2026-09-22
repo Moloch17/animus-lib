@@ -131,7 +131,10 @@ namespace
             { -1261.0f, 2951.0f, 78.0f, 0.0f },   { -441.0f, 1814.0f, 128.0f, 0.0f },
             { -561.0f, 2069.0f, 90.0f, 0.0f },
             // Eastern high ground
-            { 4012.0f, -788.0f, 286.0f, 0.0f },   { 3871.0f, -1025.0f, 242.0f, 0.0f },
+            // (3871, -1025, 242) was here and is not: it failed to build an encounter often enough to be a
+            // recurring error in the log, and a control list is the last place to keep a point that sometimes
+            // cannot produce an episode.
+            { 4012.0f, -788.0f, 286.0f, 0.0f },
             // Mid-east plains
             { 2059.0f, -2405.0f, 90.0f, 0.0f },   { 1813.0f, -2424.0f, 93.0f, 0.0f },
             { 1965.0f, -2559.0f, 86.0f, 0.0f },
@@ -161,10 +164,46 @@ namespace
             // being steered by the pathfinder; and water is where the seat has to decide whether to get in at all,
             // and then swim in three dimensions once it has.
             .Arenas = {
-                { .Name = "open", .Weight = 2, .Against = Opposition::Travel, .EpisodeSeconds = 120,
+                // Both clocks are the same. They were 120 and 150 over identical ground, which made `open` the
+                // harder arena of the two while being the one described as the simpler lesson -- and if both must
+                // reach every objective, a shorter clock is a handicap with nothing to teach in it. The
+                // difference between these two arenas is the terrain, which is what it was always meant to be.
+                { .Name = "open", .Weight = 2, .Against = Opposition::Travel, .EpisodeSeconds = 150,
                     .OnFoot = true },
+                // Ground that is actually broken. Until now neither arena declared spawn points, so both fell
+                // through to the stage list and ran on *the same terrain*: "broken ground is where the terrain
+                // probe earns its place" described an arena identical to the open one, and the measured detour
+                // said so -- 1.25 against 1.21, which is the same trip.
+                //
+                // These cells were chosen by local relief, the standard deviation of creature-spawn z within a
+                // 250-unit cell, rather than by eye -- which is how the water banks should have been picked and
+                // were not. The ridges carry a relief of 78 and 64 against ground whose z barely moves, and the
+                // Durotar canyons and the Dustwallow shore are what this file already calls "canyon and rock" and
+                // "marsh and broken shore".
                 { .Name = "broken", .Weight = 2, .Against = Opposition::Travel, .EpisodeSeconds = 150,
-                    .OnFoot = true },
+                    .OnFoot = true,
+                    .SpawnPoints = {
+                        // Mulgore/Barrens ridge, relief 78 over a 179 yard span
+                        { -1401.0f, -85.0f, 159.0f, 0.0f },   { -1449.0f, -25.0f, 124.0f, 0.0f },
+                        { -1295.0f, 44.0f, 129.0f, 0.0f },
+                        // Barrens ridge, relief 64 over 200
+                        { -428.0f, -2203.0f, 158.0f, 0.0f },  { -454.0f, -2419.0f, 93.0f, 0.0f },
+                        { -373.0f, -2323.0f, 94.0f, 0.0f },
+                        // Durotar: canyon and rock
+                        { -120.0f, -4284.0f, 63.0f, 0.0f },   { -5.0f, -4286.0f, 68.0f, 0.0f },
+                        { -99.0f, -4212.0f, 53.0f, 0.0f },    { 642.0f, -4185.0f, 15.0f, 0.0f },
+                        { 633.0f, -4298.0f, 18.0f, 0.0f },
+                        // Dustwallow Marsh: broken shore
+                        { -2631.0f, -3607.0f, 42.0f, 0.0f },  { -2751.0f, -3660.0f, 39.0f, 0.0f },
+                        { -2851.0f, -3650.0f, 33.0f, 0.0f },  { -2987.0f, -3940.0f, 39.0f, 0.0f },
+                    },
+                    // The southern Barrens escarpment, relief 47, in no training list. Rougher ground held back
+                    // for scoring, on the same argument as the stage's own control: if `arrived` here tracks
+                    // `arrived` on the ridges, the seat is reading terrain rather than remembering places.
+                    .HeldOutSpawnPoints = {
+                        { -535.0f, -2988.0f, 93.0f, 0.0f },   { -634.0f, -3183.0f, 93.0f, 0.0f },
+                        { -536.0f, -3160.0f, 107.0f, 0.0f },
+                    } },
                 // The banks of the Barrens oases -- Lushwater to the north, Stagnant to the south -- because the
                 // stage's own spawn points have no water within reach, and a water arena that finds no crossing
                 // quietly becomes a second open arena (the first run of this stage reported crossing 0.0 over all

@@ -178,6 +178,11 @@ namespace Animus::Curriculum
         /// Where the seat is looking, in its own keeping rather than the spline's (SeatView::Facing). Seeded from
         /// the bot when an episode starts, because a default of 0 would aim every seat due east.
         float Facing = 0.0f;
+        /// What the ground looks like each way it could go, marched out to MARCH_MAX and reused until the seat
+        /// has moved or turned enough to make it stale.
+        /// Mutable because it is a cache and nothing else: observing a seat does not change it, but it does
+        /// refresh what the seat has already looked at, and ViewSeat reads a const seat.
+        mutable GroundProbe Probe;
         int8 Turning = 0;                       // -1 left, +1 right, 0 not turning
         int8 PitchTurning = 0;                  // the pitch key held: -1 down, +1 up, 0 none
         float Pitch = 0.0f;                     // radians above (+) or below (-) level; only used off the ground
@@ -298,6 +303,7 @@ namespace Animus::Curriculum
             PitchTurning = 0;
             Pitch = 0.0f;
             Facing = 0.0f;
+            Probe = GroundProbe();
             OptionPresses = 0;
             OptionMs = 0;
             ItemUses = 0;

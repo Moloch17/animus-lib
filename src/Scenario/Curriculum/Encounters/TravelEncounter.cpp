@@ -28,16 +28,31 @@
 #include "TravelBlock.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace
 {
-    constexpr uint32 OBJECTIVE_ATTEMPTS = 32;
+    /// How many places are thrown at the ground before an episode gives up on finding one.
+    ///
+    /// Raised from 32 with the feasibility cap and the broken arena's real terrain: both reject more draws, and a
+    /// draw that fails costs only the throw, because the loop stops at the first place that passes. Easy ground
+    /// still succeeds on the first or second attempt and pays nothing for the higher ceiling; rough ground gets
+    /// the tries it needs rather than falling through to the spawn-point retry, which moves the seats.
+    constexpr uint32 OBJECTIVE_ATTEMPTS = 48;
     constexpr float MAX_PATH_DETOUR = 1.8f;         // a path at most this many times the straight distance
     // A water arena wants the detour the others refuse: the way round has to be far enough longer than the way
     // through that swimming is a real choice. Swimming is about 4.7 yd/s against 7 running, so the crossing pays
     // at roughly 1.5x and this leaves a margin on either side of that -- some of these trips are worth swimming
     // and some are not, which is what makes it a decision rather than a reflex.
     constexpr float MIN_DETOUR_ACROSS = 1.35f;
+    /// How much of an episode's clock the walk to the objective may need, at the character's own run speed.
+    ///
+    /// A trip that fills the clock is winnable only by a seat that already walks it perfectly, and the standard
+    /// is that the bot always arrives -- so the generator has to stop setting trips that a policy still learning
+    /// to steer cannot finish. At the common case this rejects nothing: 160 yards (FootMax) at 7 yards a second
+    /// is 23 seconds against a 120 second clock, a share of 0.19. What it cuts is the tail -- a long trip behind
+    /// a 1.8x detour for a character with no speed to spare.
+    constexpr float FEASIBLE_SHARE = 0.45f;
     // Running is 7 yd/s and swimming about 4.7, so the way round has to be this much longer than the way through
     // before swimming it actually saves time. Reported, never required: the arena wants trips on both sides of it.
     constexpr float SWIM_PAYS_ABOVE = 7.0f / 4.7f;
@@ -138,6 +153,9 @@ void Animus::Curriculum::TravelEncounter::AddEpisodeInfo(EpisodeInfoTable& table
         EnvTravel const& travel = _envs[env.Index];
         return travel.AloftSteps ? float(travel.AloftFlagged) / float(travel.AloftSteps) : 0.0f;
     });
+    // How much of the clock the trip needed at the seat's own speed. The cap in FindPlace is a ceiling on this;
+    // the column is how the distribution under that ceiling stays visible.
+    table.Add("trip_share", [this](Env const& env, uint32) { return _envs[env.Index].TripShare; });
     table.Add("flight_height", [this](Env const& env, uint32)
     {
         EnvTravel const& travel = _envs[env.Index];
@@ -185,8 +203,16 @@ void Animus::Curriculum::TravelEncounter::ResetEpisode(Env& env)
 }
 
 bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float nearest, float furthest, bool flying,
-    Position& place, float* walk, bool across, float* dry)
+    Position& place, float budgetSeconds, float* walk, bool across, float* dry)
 {
+    // What the seat can actually cover in the time it has. Reachability was the only test until now -- a path of
+    // type PATHFIND_NORMAL, no longer than MAX_PATH_DETOUR times the straight line -- and reachable is not the
+    // same claim as reachable before the clock runs out at this character's speed. The gap between the two is
+    // where an unwinnable episode comes from, and an unwinnable episode is the one thing a gate at 1.0 cannot
+    // survive: it would halt the whole queue over a trip no policy could have made.
+    float const speed = std::max(1.0f, bot->GetSpeed(flying ? MOVE_FLIGHT : MOVE_RUN));
+    float const affordable = budgetSeconds > 0.0f ? budgetSeconds * speed : std::numeric_limits<float>::max();
+
     // A crossing is a much narrower thing to ask for than a trip -- it wants water on the straight line and a dry
     // way round at least MIN_DETOUR_ACROSS longer -- so it gets more tries before it gives up and the arena falls
     // back to an ordinary trip. At 32 it found one in 0.65 of its episodes; the ones it missed were not bad ground
@@ -253,6 +279,12 @@ bool Animus::Curriculum::TravelEncounter::FindPlace(Player* bot, Map* map, float
             else if (walked > distance * MAX_PATH_DETOUR)
                 continue;
         }
+
+        // Far enough inside the clock to be winnable by a seat that is still learning to steer, rather than only
+        // by one that walks the path perfectly. FEASIBLE_SHARE is what "far enough" means, and the trip's actual
+        // share of the clock is reported per episode so the margin can be read rather than trusted.
+        if (walked > affordable)
+            continue;
 
         place.Relocate(x, y, z);
         if (walk)
@@ -322,9 +354,14 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     travel.MarkDistance = -1.0f;
     travel.MoveRate = 0.0f;
     travel.CloseRate = 0.0f;
-    if (arena.Water && FindPlace(bot, map, least, most, flying, travel.Objective, &walk, true, &travel.DryDistance))
+    // The clock this arena actually runs, not the stage's default: `open` and `broken` do not have to agree, and
+    // a share of it rather than all of it, because arriving with one second to spare is not a trip a seat can be
+    // asked to make every time.
+    float const budget = float(env.EpisodeLengthMs) / 1000.0f * FEASIBLE_SHARE;
+    if (arena.Water
+        && FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk, true, &travel.DryDistance))
         travel.Crossing = true;
-    else if (!FindPlace(bot, map, least, most, flying, travel.Objective, &walk))
+    else if (!FindPlace(bot, map, least, most, flying, travel.Objective, budget, &walk))
         return false;
 
     // What the way round costs on foot, for every arena rather than only the ones built around a crossing:
@@ -343,6 +380,11 @@ bool Animus::Curriculum::TravelEncounter::Build(Env& env, Map* map, uint8 /*leve
     travel.HasObjective = true;
     travel.StartDistance = bot->GetExactDist2d(&travel.Objective);
     travel.WalkDistance = walk > 0.0f ? walk : travel.StartDistance;
+    {
+        float const speed = std::max(1.0f, bot->GetSpeed(flying ? MOVE_FLIGHT : MOVE_RUN));
+        float const seconds = float(env.EpisodeLengthMs) / 1000.0f;
+        travel.TripShare = seconds > 0.0f ? travel.WalkDistance / speed / seconds : 0.0f;
+    }
     travel.KnowsFlyer = TravelBlock::FlyingMount(bot) != nullptr;
     travel.CouldMountFlyer = TravelBlock::CanSummonFlying(bot);
     _scenario.PrepareFighter(bot, data.Seats[0]);
